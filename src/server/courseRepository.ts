@@ -267,10 +267,13 @@ export async function updateLayout(id: string, raw: unknown, actor?: string) {
 }
 
 function ratingValues(input: RatingSetInput) {
+  // Wer ein Rating als verifiziert markiert, hat es an diesem Tag geprüft.
+  const checkedAt = input.verified ? input.checkedAt ?? today() : input.checkedAt;
   return {
     ...input,
     holes: input.holes,
-    lastVerifiedAt: input.verified ? input.checkedAt ?? today() : null,
+    checkedAt,
+    lastVerifiedAt: input.verified ? checkedAt : null,
   };
 }
 
@@ -374,7 +377,7 @@ export interface CsvApplyResult {
   skipped: number;
 }
 
-function ratingPayload(row: ParsedCsvRow, layoutId: string) {
+function ratingPayload(row: ParsedCsvRow, layoutId: string, existing?: { checkedAt: string | null; confidence: string | null }) {
   return {
     layoutId,
     gender: row.gender,
@@ -390,9 +393,9 @@ function ratingPayload(row: ParsedCsvRow, layoutId: string) {
     validTo: row.validTo,
     sourceType: row.sourceType,
     sourceUrl: row.sourceUrl,
-    checkedAt: row.checkedAt,
+    checkedAt: row.checkedAt ?? existing?.checkedAt ?? null,
     verified: row.verified,
-    confidence: row.confidence,
+    confidence: row.confidence ?? existing?.confidence ?? null,
     active: true,
     notes: null,
   };
@@ -467,7 +470,8 @@ export async function applyCsvPlan(plan: CsvImportPlan, actor?: string): Promise
         await createRatingSet(ratingPayload(row, layoutId), "CSV_IMPORT", actor, tx);
         result.createdRatings += 1;
       } else if (p.rating.action === "UPDATE" && p.rating.id) {
-        await updateRatingSet(p.rating.id, ratingPayload(row, layoutId), "CSV_IMPORT", actor, tx);
+        const [current] = await tx.select().from(ratingSets).where(eq(ratingSets.id, p.rating.id));
+        await updateRatingSet(p.rating.id, ratingPayload(row, layoutId, current), "CSV_IMPORT", actor, tx);
         result.updatedRatings += 1;
       }
     }

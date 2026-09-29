@@ -109,7 +109,13 @@ export interface TargetAnalysis {
   alreadyReached: boolean;
   date: IsoDate;
   /** Höchstes Score Differential (0,1-Schritte), mit dem EINE Runde das Ziel erreicht. */
-  singleRound: { achievable: boolean; maxDifferential: number | null; resultingHandicapIndex: number | null };
+  singleRound: {
+    achievable: boolean;
+    maxDifferential: number | null;
+    resultingHandicapIndex: number | null;
+    /** Das Ziel wird mit jedem denkbaren Ergebnis erreicht (z. B. durch die Tabellenanpassung). */
+    anyResult: boolean;
+  };
   /** Älteste Ergebnisse, die durch weitere Runden der Reihe nach herausfallen würden. */
   nextToDrop: (WindowEntry & { order: number })[];
   scenarios: TargetScenario[];
@@ -182,6 +188,7 @@ export function analyzeTarget(
       achievable: maxDifferential !== null,
       maxDifferential,
       resultingHandicapIndex: maxDifferential !== null ? resultFor([maxDifferential]) : null,
+      anyResult: best === 700,
     },
     nextToDrop,
     scenarios,

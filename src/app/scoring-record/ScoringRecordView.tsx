@@ -32,7 +32,7 @@ export function ScoringRecordView() {
         <EmptyState icon={<ListOrdered className="h-8 w-8" />} title="Noch keine handicap-relevanten Ergebnisse" action={<ButtonLink href="/runde-erfassen">Runde erfassen</ButtonLink>} />
       ) : (
         <div className="space-y-5">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,22rem)_1fr]">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
             <Card>
               <div className="p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand">Aktueller Handicap Index</p>

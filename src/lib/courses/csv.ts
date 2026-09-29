@@ -321,6 +321,8 @@ const RATING_FIELDS: (keyof ParsedCsvRow & keyof RatingSetDto)[] = [
   "confidence",
 ];
 
+const KEEP_IF_EMPTY = new Set<string>(["checkedAt", "confidence"]);
+
 export function courseKeyFor(name: string, city: string | null): string {
   return `${normalizeCourseName(name)}|${foldText(city ?? "").trim()}`;
 }
@@ -438,6 +440,8 @@ export function planCsvImport(text: string, existing: readonly CourseDto[]): Csv
       for (const field of RATING_FIELDS) {
         const from = (existingRating[field] ?? null) as FieldChange["from"];
         const to = (row[field] ?? null) as FieldChange["to"];
+        // Leeres Prüfdatum/Vertrauen in der CSV überschreibt vorhandene Angaben nicht.
+        if (to === null && KEEP_IF_EMPTY.has(field)) continue;
         if (from !== to) changes.push({ field, from, to });
       }
       base.changes = changes;

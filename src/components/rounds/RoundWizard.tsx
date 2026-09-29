@@ -314,7 +314,7 @@ export function RoundWizard({ editId }: { editId?: string | null }) {
     }, true);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[220px_1fr]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
       {/* Fortschritt */}
       <nav aria-label="Schritte" className="no-print">
         <ol className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:gap-0.5">
@@ -542,7 +542,7 @@ export function RoundWizard({ editId }: { editId?: string | null }) {
                   <ChoiceCards
                     value={draft.nine}
                     columns={2}
-                    onChange={(v) => update((d) => ({ nine: v, holeData: blankHoles(9, v === "BACK" ? 9 : 0) }), true)}
+                    onChange={(v) => update(() => ({ nine: v, holeData: blankHoles(9, v === "BACK" ? 9 : 0) }), true)}
                     options={[
                       { value: "FRONT" as NineSide, label: "Front Nine (1–9)" },
                       { value: "BACK" as NineSide, label: "Back Nine (10–18)" },

@@ -132,7 +132,7 @@ export function RoundDetail({ id }: { id: string }) {
 
       <RoundResultSummary round={round} result={result} />
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader title="Gespielte Runde" subtitle="Unveränderlich gespeicherte Daten dieser Runde" />
           <CardBody>

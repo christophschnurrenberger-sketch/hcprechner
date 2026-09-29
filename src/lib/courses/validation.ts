@@ -19,10 +19,10 @@ const isoDate = z
   .or(z.literal("").transform(() => null))
   .transform((v) => v ?? null);
 
+/** Leere Eingaben werden zu null – nie zu 0 (z. coerce würde "" als 0 lesen). */
 const optionalNumber = <T extends z.ZodType<number, unknown>>(schema: T) =>
   z
-    .union([schema, z.literal("").transform(() => null), z.null()])
-    .optional()
+    .preprocess((v) => (v === "" || v === undefined || (typeof v === "string" && v.trim() === "") ? null : v), schema.nullable())
     .transform((v) => (v === undefined ? null : v));
 
 export const courseInputSchema = z.object({
