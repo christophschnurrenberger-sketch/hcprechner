@@ -16,6 +16,7 @@ Zentrale Bewertungsgröße ist das **Score Differential**.
 | Oberfläche | Dashboard, Runde erfassen (Wizard, mobile Scorekarte Loch für Loch), Meine Runden, Scoring Record, Golfplätze, HCP-Simulator (Was-wäre-wenn, Ziel-HCPI), GBE-Rechner, Statistiken inkl. Platzanalyse, Einstellungen, Admin, Methodik |
 | Golfplatzdaten | Relationales Modell Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; Suche, öffentliche SEO-Seiten, CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
 | Daten des Spielers | Local Mode (Browser-Speicher, kein Konto), Export CSV/JSON/PDF, Runden-CSV-Import, optionale anonyme Synchronisation |
+| Benutzerkonten | Admin legt Zugänge an (Startpasswort, Pflicht zum Wechsel); angemeldete Spieler speichern Profil und Runden auf dem Server und nutzen sie auf jedem Gerät; Rolle „Golfplatzpflege“ für Co-Admins; sperren, Passwort zurücksetzen, löschen |
 
 ## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
 
@@ -34,7 +35,7 @@ Voraussetzung: PHP ≥ 7.4 (empfohlen 8.x), Apache. Details, Sicherheit und Unte
 ```bash
 npm install
 npm run dev          # http://localhost:3000 – eingebettetes PostgreSQL (PGlite) in .data/pglite
-npm test             # 315 Tests (231 für die WHS-Engine)
+npm test             # 331 Tests (231 für die WHS-Engine)
 ```
 
 Ohne `DATABASE_URL` läuft die App mit eingebettetem PostgreSQL (PGlite). Für den Produktivbetrieb:
@@ -56,12 +57,13 @@ Alle Variablen: siehe [`.env.example`](.env.example). Migrationen (`drizzle/`) w
 | Befehl | Zweck |
 |---|---|
 | `npm run dev` / `build` / `start` | Entwicklung, Produktions-Build, Start |
-| `npm run build:webspace` | Webspace-Edition bauen und als ZIP packen (`--seed <datensatz.json>` liefert Golfplatzdaten mit) |
+| `npm run build:webspace` | Webspace-Edition bauen und als ZIP packen (Startdaten aus `data/seed/`; `--seed <datei>` bzw. `--no-seed`) |
 | `npm test` | Vitest (Engine, Platzdaten, Importer, Repository mit PGlite) |
 | `TEST_DATABASE_URL=… npm test` | Repository-Tests gegen echtes PostgreSQL |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm run db:generate` | neue SQL-Migration aus `src/db/schema.ts` erzeugen |
 | `npm run db:check` | Datenbankverbindung und Migrationen prüfen |
+| `npm run db:seed` | mitgelieferte Golfplatz-Startdaten (`data/seed/`) übernehmen – vorhandene Anlagen bleiben unverändert |
 | `npm run import:bavaria -- [--apply]` | Bayern-Importer (siehe unten) |
 
 ## Golfplatzdatenbank Bayern
@@ -78,7 +80,26 @@ Befüllung:
 2. **Ratings** – nach Prüfung gegen die offizielle Quelle (DGV, Club/Scorekarte) per CSV-Import im Admin-Bereich
    (Vorlage: [`data/templates/golfplaetze-import-vorlage.csv`](data/templates/golfplaetze-import-vorlage.csv)) oder per Formular.
 
-Aktueller Stand und Einschränkungen: [`docs/DATENSTATUS-BAYERN.md`](docs/DATENSTATUS-BAYERN.md).
+Mitgelieferte Startdaten: [`data/seed/golfplaetze-bayern.json`](data/seed/golfplaetze-bayern.json) (derzeit Allgäuer
+Golf- und Landclub Ottobeuren, Ratings noch nicht verifiziert). Aktueller Stand und Einschränkungen:
+[`docs/DATENSTATUS-BAYERN.md`](docs/DATENSTATUS-BAYERN.md).
+
+## Benutzerkonten
+
+Im Admin-Bereich unter **Benutzer** (nur mit dem Haupt-Passwort) legt der Betreiber Zugänge an: Name, Benutzername,
+Startpasswort (wird erzeugt und einmalig angezeigt) und Rolle.
+
+- **Spieler** melden sich unter **Anmelden** an und müssen zuerst ein eigenes Passwort festlegen. Profil, Runden und
+  Einstellungen werden danach automatisch im Konto gespeichert (verzögert, mit Revisionsprüfung; Änderungen von zwei
+  Geräten werden zusammengeführt) und stehen auf jedem Gerät zur Verfügung. Ohne Anmeldung bleibt alles wie bisher im
+  Browser (Local Mode); vorhandene Browser-Runden lassen sich unter **Mein Konto** ins Konto übernehmen.
+- **Spieler + Golfplatzpflege** dürfen sich zusätzlich im Admin-Bereich mit Benutzername und Passwort anmelden und die
+  Golfplatzdaten bearbeiten – ohne Zugriff auf die Benutzerverwaltung.
+- Sperren, Passwort zurücksetzen (meldet den Benutzer auf allen Geräten ab) und Löschen (inkl. gespeicherter Runden).
+
+Node-Edition: Tabellen `app_users`/`app_user_data` (Migration `drizzle/0001_user_accounts.sql`), Passwörter mit scrypt,
+signiertes HttpOnly-Cookie (`USER_SESSION_SECRET`). Webspace-Edition: `api/account.php`, Daten in `data/users.php` und
+`data/userdata/` (siehe [`docs/WEBSPACE.md`](docs/WEBSPACE.md)).
 
 ## Dokumentation
 

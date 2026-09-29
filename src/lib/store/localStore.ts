@@ -34,9 +34,9 @@ export function emptyData(): StoredData {
   return { version: 1, profile: defaultProfile(), rounds: [], settings: defaultSettings(), updatedAt: new Date().toISOString() };
 }
 
-export function loadData(): StoredData {
+export function loadData(key = STORAGE_KEY): StoredData {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return emptyData();
     const parsed = exportSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
@@ -55,10 +55,50 @@ export function loadData(): StoredData {
   }
 }
 
-export function saveData(data: StoredData): boolean {
+export function saveData(data: StoredData, key = STORAGE_KEY): boolean {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    window.localStorage.setItem(key, JSON.stringify(data));
     return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Entfernt gespeicherte Daten (z. B. den Zwischenspeicher eines Kontos beim Abmelden). */
+export function removeData(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(`${key}:dirty`);
+  } catch {
+    // Speicher nicht verfügbar
+  }
+}
+
+/** Anzahl der unter `key` gespeicherten Runden (ohne vollständiges Einlesen der Runden). */
+export function countStoredRounds(key = STORAGE_KEY): number {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { rounds?: unknown };
+    return Array.isArray(parsed.rounds) ? parsed.rounds.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Kennzeichen „noch nicht mit dem Server synchronisiert“ für den Zwischenspeicher eines Kontos. */
+export function setDirty(key: string, dirty: boolean): void {
+  try {
+    if (dirty) window.localStorage.setItem(`${key}:dirty`, "1");
+    else window.localStorage.removeItem(`${key}:dirty`);
+  } catch {
+    // Speicher nicht verfügbar
+  }
+}
+
+export function isDirty(key: string): boolean {
+  try {
+    return window.localStorage.getItem(`${key}:dirty`) === "1";
   } catch {
     return false;
   }

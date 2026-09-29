@@ -26,7 +26,7 @@ const nodeConfig: NextConfig = {
     serverActions: { bodySizeLimit: "12mb" },
   },
   outputFileTracingIncludes: {
-    "/**": ["./drizzle/**/*"],
+    "/**": ["./drizzle/**/*", "./data/seed/**/*"],
   },
 };
 

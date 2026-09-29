@@ -18,6 +18,13 @@ export interface AdminBackend {
   mergeCourses: (fd: FormData) => Promise<void>;
   previewCsv: (prev: CsvPreviewState, fd: FormData) => Promise<CsvPreviewState>;
   applyCsv: (prev: CsvPreviewState, fd: FormData) => Promise<CsvPreviewState>;
+  /** Mitgelieferte Golfplatz-Startdaten übernehmen (nur fehlende Anlagen). */
+  importSeed: (prev: ActionState, fd: FormData) => Promise<ActionState>;
+  /** Benutzerverwaltung (nur mit dem Haupt-Passwort). */
+  createUser: (prev: ActionState, fd: FormData) => Promise<ActionState>;
+  resetUserPassword: (prev: ActionState, fd: FormData) => Promise<ActionState>;
+  updateUser: (prev: ActionState, fd: FormData) => Promise<ActionState>;
+  deleteUser: (prev: ActionState, fd: FormData) => Promise<ActionState>;
 }
 
 const AdminBackendContext = createContext<AdminBackend | null>(null);

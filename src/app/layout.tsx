@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { HcpStoreProvider } from "@/components/providers/HcpStoreProvider";
+import { AccountProvider } from "@/components/providers/AccountProvider";
 import { InstallGuard } from "@/components/layout/InstallGuard";
 import { IS_WEBSPACE } from "@/lib/runtime";
 
@@ -32,9 +33,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </head>
       )}
       <body className="antialiased">
-        <HcpStoreProvider>
-          <AppShell>{children}</AppShell>
-        </HcpStoreProvider>
+        <AccountProvider>
+          <HcpStoreProvider>
+            <AppShell>{children}</AppShell>
+          </HcpStoreProvider>
+        </AccountProvider>
       </body>
     </html>
   );

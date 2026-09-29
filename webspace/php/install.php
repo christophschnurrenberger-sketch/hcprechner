@@ -248,7 +248,7 @@ function write_htaccess($root, $base, $minimal)
 function ensure_data_dir($data)
 {
     $ok = true;
-    foreach (array('', '/sync', '/backups', '/ratelimit', '/sessions') as $sub) {
+    foreach (array('', '/sync', '/backups', '/ratelimit', '/sessions', '/userdata') as $sub) {
         $dir = $data . $sub;
         if (!is_dir($dir)) {
             $ok = @mkdir($dir, 0755, true) && $ok;

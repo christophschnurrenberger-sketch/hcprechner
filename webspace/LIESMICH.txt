@@ -47,8 +47,15 @@ Danach
   Dort Golfanlagen anlegen oder Ratingdaten per CSV importieren (Vorlage im
   Import-Bereich). Course Rating und Slope nur aus offiziellen Quellen
   übernehmen – die Anwendung erfindet oder schätzt keine Werte.
-- Die Runden jedes Nutzers bleiben in dessen Browser (Local Mode). Optional
-  kann in den Einstellungen eine anonyme Synchronisation genutzt werden.
+- Benutzer: Im Admin-Bereich unter „Benutzer“ Zugänge für Spieler anlegen
+  (Startpasswort wird angezeigt und muss beim ersten Anmelden geändert
+  werden). Angemeldete Spieler speichern ihre Runden auf Ihrem Webspace und
+  sehen sie auf jedem Gerät. Mit der Rolle „Golfplatzpflege“ darf ein Benutzer
+  auch die Golfplatzdaten bearbeiten.
+- Ohne Anmeldung bleiben die Runden im Browser des Nutzers (Local Mode).
+- Mitgeliefert: Allgäuer Golf- und Landclub Ottobeuren (CR/Slope Gelb/Rot,
+  noch NICHT verifiziert – bitte im Admin-Bereich mit der Scorekarte abgleichen
+  und freigeben; Lochdaten ergänzen).
 
 Update auf eine neue Version
 ----------------------------
@@ -59,8 +66,10 @@ erneut aufrufen – zur Bestätigung genügt das Admin-Passwort.
 Datensicherung
 --------------
 Alle Serverdaten liegen im Ordner data/ (Golfplatzdaten, die letzten 10
-Sicherungen in data/backups/, Sync-Profile in data/sync/). Zusätzlich gibt es
-im Admin-Bereich einen JSON-/CSV-Export.
+Sicherungen in data/backups/, Benutzer in data/users.php, deren Runden in
+data/userdata/, Sync-Profile in data/sync/). Den Ordner data/ regelmäßig per
+FTP sichern. Zusätzlich gibt es im Admin-Bereich einen JSON-/CSV-Export der
+Golfplatzdaten.
 
 Probleme?
 ---------

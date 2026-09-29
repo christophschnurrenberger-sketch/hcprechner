@@ -257,3 +257,32 @@ export type RatingSetRow = typeof ratingSets.$inferSelect;
 export type NewRatingSetRow = typeof ratingSets.$inferInsert;
 export type HoleRow = typeof holes.$inferSelect;
 export type NewHoleRow = typeof holes.$inferInsert;
+
+/** Vom Admin angelegte Benutzerkonten (Rolle „player“ oder „editor“ = zusätzlich Golfplatzpflege). */
+export const appUsers = pgTable(
+  "app_users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    username: text("username").notNull(),
+    displayName: text("display_name").notNull(),
+    role: text("role").notNull().default("player"),
+    active: boolean("active").notNull().default(true),
+    mustChangePassword: boolean("must_change_password").notNull().default(true),
+    passwordHash: text("password_hash").notNull(),
+    /** Ändert sich bei jedem Passwortwechsel – meldet bestehende Sitzungen ab. */
+    passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }).notNull().defaultNow(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("app_users_username_idx").on(t.username), check("app_users_role_check", sql`${t.role} in ('player', 'editor')`)],
+);
+
+/** Daten eines Benutzerkontos (Profil, Runden, Einstellungen) als ein Dokument mit Revision. */
+export const appUserData = pgTable("app_user_data", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => appUsers.id, { onDelete: "cascade" }),
+  data: jsonb("data").notNull(),
+  revision: integer("revision").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

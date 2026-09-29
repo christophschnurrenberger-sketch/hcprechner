@@ -584,3 +584,45 @@ export function recordImportRun(ds: CourseDataset, kind: string, status: string,
   const run: ImportRunEntry = { id: ctx.id(), kind, status, summary, startedAt: ctx.now.toISOString(), finishedAt: ctx.now.toISOString() };
   return { ...ds, importRuns: [run, ...ds.importRuns].slice(0, IMPORT_RUN_LIMIT) };
 }
+
+// ---------------------------------------------------------------------------
+// Mitgelieferte Startdaten (data/seed → golfplaetze-daten.json)
+// ---------------------------------------------------------------------------
+
+export interface SeedMergeResult {
+  dataset: CourseDataset;
+  added: string[];
+  existing: string[];
+}
+
+function sameFacility(a: CourseDto, b: CourseDto): boolean {
+  if (a.id === b.id || a.slug === b.slug) return true;
+  if (a.externalClubId && a.externalClubId === b.externalClubId) return true;
+  return normalizeCourseName(a.name) === normalizeCourseName(b.name) && (a.city ?? "") === (b.city ?? "");
+}
+
+/** Welche Anlagen der Startdaten fehlen im Datensatz? (gleiche ID, Slug, Club-ID oder Name + Ort = vorhanden) */
+export function missingSeedCourses(ds: CourseDataset, seed: CourseDataset): CourseDto[] {
+  return seed.courses.filter((s) => !ds.courses.some((c) => sameFacility(c, s)));
+}
+
+/**
+ * Übernimmt fehlende Anlagen aus den Startdaten (vorhandene bleiben unverändert – auch wenn sie
+ * im Admin-Bereich bereits bearbeitet wurden). Protokolliert als Quelle „SEED“.
+ */
+export function mergeSeedCourses(ds: CourseDataset, seed: CourseDataset, options?: OperationContext): SeedMergeResult {
+  const ctx = new Ctx({ ...options, source: "SEED" });
+  const missing = missingSeedCourses(ds, seed);
+  let next: CourseDataset = ds;
+  for (const course of missing) {
+    const slug = uniqueSlug(next, course.name, course.city);
+    next = { ...next, courses: sortCourses([...next.courses, { ...course, slug }]) };
+    next = log(next, ctx, { entityType: "course", entityId: course.id, action: "CREATE", changes: { name: course.name, layouts: course.layouts.length } });
+  }
+  if (missing.length > 0) next = recordImportRun(next, "SEED", "APPLIED", { added: missing.map((c) => c.name) }, { ...options, source: "SEED" });
+  return {
+    dataset: next,
+    added: missing.map((c) => c.name),
+    existing: seed.courses.filter((s) => !missing.includes(s)).map((c) => c.name),
+  };
+}

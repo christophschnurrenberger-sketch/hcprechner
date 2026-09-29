@@ -6,20 +6,42 @@ Stand: 29.09.2026
 
 | Kennzahl | Wert |
 |---|---|
-| Anlagen in der ausgelieferten Datenbank | **0** |
+| Anlagen in den mitgelieferten Startdaten (`data/seed/golfplaetze-bayern.json`) | **1** (Allgäuer Golf- und Landclub Ottobeuren) |
+| Rating-Sets | **2** (18 Loch: Gelb Herren, Rot Damen) – **nicht verifiziert** |
 | Verifizierte Rating-Sets | **0** |
 | Importer / CSV-Import / Admin | einsatzbereit, getestet |
 
-Die Datenbank wird **leer** ausgeliefert. Es sind keine Golfanlagen und keine CR-/Slope-Werte enthalten.
+## Allgäuer Golf- und Landclub Ottobeuren
 
-## Warum leer?
+| Abschlag | Par | CR | Slope | Länge | Quelle |
+|---|---|---|---|---|---|
+| Gelb, Herren, 18 Loch | 72 | 72,3 | 131 | 6096 m | Club-Website „Scorekarte & Vorgabe“ |
+| Rot, Damen, 18 Loch | 72 | 74,3 | 127 | 5398 m | Club-Website „Scorekarte & Vorgabe“ |
+
+- Quelle: <https://www.golfclub-ottobeuren.de/golfplatz/scorekarte-vorgabe>. Die Seite selbst war aus der
+  Build-Umgebung **nicht abrufbar** (Egress-Sperre); die Werte stammen aus übereinstimmenden Suchergebnissen
+  (Auszüge dieser Club-Seite) vom 29.09.2026. Deshalb `verified = false`, Vertrauen MEDIUM, kein Prüfdatum.
+- **Nicht erfasst** (nicht verfügbar, nichts geschätzt): Par und Handicap (Stroke Index) je Loch, Längen je Loch,
+  weitere Abschläge (z. B. Weiß/Blau/Orange), 9-Loch-Ratings (Front/Back Nine), Gültigkeitszeitraum, Koordinaten.
+  Diese stehen auf der Scorekarte bzw. im Birdiebook des Clubs.
+- 6-Loch-Kurzplatz als Layout ohne Rating angelegt (die Suchergebnisse enthielten widersprüchliche Angaben).
+- Freigabe: im Admin-Bereich die Werte mit der aktuellen Scorekarte abgleichen, Lochdaten ergänzen und die Ratings
+  per Klick verifizieren. Erst dann werden sie im Runden-Assistenten automatisch verwendet; bis dahin werden CR und
+  Slope bei der Erfassung manuell von der Scorekarte eingegeben („Rating selbst eingeben“).
+- Stammdaten (Adresse Hofgut Boschach, 87724 Ottobeuren) aus Sekundärquellen, nicht verifiziert.
+
+Die Startdaten werden mit der Webspace-Edition ausgeliefert (`golfplaetze-daten.json`); bestehende Installationen
+übernehmen fehlende Anlagen im Admin-Bereich über „Mitgelieferte Golfplatzdaten“. Node-Edition: `npm run db:seed`
+oder dieselbe Karte im Admin-Bereich.
+
+## Warum (noch) so wenige Anlagen?
 
 Während der Entwicklung war der Netzzugang der Build-Umgebung auf Paketquellen beschränkt. Die Quellen
 `bayerischer-golfverband.de`, `golf.de`, `dgv-intranet.de` und die Websites der Clubs waren nicht erreichbar
 (HTTP 403 durch die Egress-Richtlinie). Die BGV-Clubübersicht konnte daher nicht durchlaufen werden.
 
 Eine aus dem Gedächtnis erstellte Liste oder geschätzte Ratingwerte wären ein Verstoß gegen die Grundregel
-„keine erfundenen Platzdaten“. Deshalb wurde bewusst nichts eingetragen.
+„keine erfundenen Platzdaten“. Deshalb wurden nur Werte eingetragen, die aus der Quelle belegt sind.
 
 ## So wird die Datenbank befüllt
 

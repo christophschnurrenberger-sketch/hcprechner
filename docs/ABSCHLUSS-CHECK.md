@@ -1,6 +1,6 @@
 # Abschluss-Check (Spezifikation §79)
 
-Stand: 29.09.2026 · 315 automatisierte Tests (davon 231 für die WHS-Engine), ESLint und TypeScript ohne Befund,
+Stand: 29.09.2026 · 331 automatisierte Tests (davon 231 für die WHS-Engine), ESLint und TypeScript ohne Befund,
 Produktions-Build erfolgreich, Standalone-Server mit PGlite und mit PostgreSQL 16 geprüft, Browser-Tests (Desktop und
 390 px) für Dashboard, Wizard (manuell und Datenbank, 9 Loch, Scorekarte), Rundendetail, Scoring Record, Simulator,
 Einstellungen/Export, Admin (CRUD, CSV-Import), Golfplatzsuche und öffentliche Golfplatzseite.
@@ -9,6 +9,11 @@ Webspace-Edition: ZIP-Paket mit `php -S` (PHP 8.4) als simuliertem Webspace gepr
 in der Domain-Wurzel, Update über bestehende Installation, Admin (Anmeldung, Anlage/Platz/Rating, Validierung,
 Speichern auf dem Server), Golfplatzsuche und Anlagen-Seite, Runde mit Platz aus der Datenbank erfassen,
 Synchronisation, 404-Seite, Schutz von `data/`, CSRF-Schutz, Sitemap, Mobilansicht (je 28/28 Prüfungen).
+
+Benutzerkonten (beide Editionen im Browser geprüft): Anlegen durch den Admin, Startpasswort und Pflichtwechsel,
+automatisches Speichern im Konto, zweites Gerät, Übernahme der Browser-Runden, Abmelden entfernt Kontodaten aus dem
+Browser, Co-Admin mit Golfplatzpflege ohne Benutzerverwaltung, Passwort zurücksetzen meldet ab, Sperren, Löschen
+(Webspace 19/19, Node 9/9 Prüfungen); Konflikt-Zusammenführung und Wiederholungslogik als Unit Tests.
 Nicht geprüft: echter Apache mit `.htaccess` (kein Apache in der Build-Umgebung) – die `.htaccess`-Anweisungen sind
 in `<IfModule>` gekapselt, und `install.php` schaltet bei HTTP 500 automatisch auf eine minimale Fassung um.
 
@@ -34,7 +39,7 @@ in `<IfModule>` gekapselt, und `install.php` schaltet bei HTTP 500 automatisch a
 | historische CR/Slope unveränderlich | ✅ | Rating-Snapshot je Runde; `scoringRecord.test.ts`, `courses.test.ts` (Rating nach Spieldatum) |
 | keine erfundenen Platzdaten | ✅ | Datenbank leer ausgeliefert; `NULL` statt Schätzung; DB-Constraint `verified` nur mit Werten und Quelle |
 | 9-Loch-Ratings nie aus 18-Loch abgeleitet | ✅ | `courses.test.ts`, `nineHole.test.ts`, `partialRound.test.ts` |
-| Golfplätze Bayern vollständig erfasst / Status dokumentiert | ⚠️ Status dokumentiert, **nicht erfasst** | Egress-Sperre in der Build-Umgebung, siehe `DATENSTATUS-BAYERN.md` |
+| Golfplätze Bayern vollständig erfasst / Status dokumentiert | ⚠️ Status dokumentiert, **1 Anlage** (Ottobeuren, unverifiziert) | Egress-Sperre in der Build-Umgebung, siehe `DATENSTATUS-BAYERN.md` |
 | alle Datenquellen gespeichert | ✅ | `rating_sets.source_type/source_url/checked_at/verified/confidence`, `change_log` |
 | mobile Scorekarteneingabe funktioniert | ✅ | Browser-Test 390 px (Loch für Loch, Schnellauswahl, NDB-Anzeige) |
 | CSV-Import funktioniert | ✅ | `courses.test.ts`, `repository.test.ts`, Browser-Test Admin-Import und Runden-CSV |

@@ -12,6 +12,8 @@ const TOP_LEVEL_ROUTES = [
   "golfplaetze",
   "methodik",
   "einstellungen",
+  "anmelden",
+  "konto",
   "admin",
 ];
 

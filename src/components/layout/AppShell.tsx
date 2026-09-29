@@ -17,10 +17,14 @@ import {
   Settings,
   ShieldCheck,
   BookOpen,
+  LogIn,
+  UserCircle,
   X,
 } from "lucide-react";
 import { cn, formatHcp } from "@/lib/format";
 import { useHcp } from "@/components/providers/HcpStoreProvider";
+import { useAccount } from "@/components/providers/AccountProvider";
+import { SyncStatusBadge } from "@/components/account/SyncStatusBadge";
 
 interface NavItem {
   href: string;
@@ -73,6 +77,44 @@ function HcpChip() {
   );
 }
 
+/** Anmelden bzw. angemeldeter Benutzer (nur wenn der Server Benutzerkonten anbietet). */
+function AccountEntry({ compact = false }: { compact?: boolean }) {
+  const { state } = useAccount();
+  if (state.status === "authenticated") {
+    return (
+      <Link href="/konto" className={cn("flex items-center gap-2 rounded-lg hover:text-ink", compact ? "" : "px-3 py-2 hover:bg-surface-2")} title="Mein Konto">
+        <UserCircle className="h-[18px] w-[18px] shrink-0 text-brand" aria-hidden />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-ink">{state.user.displayName}</span>
+          {!compact && <SyncStatusBadge />}
+        </span>
+      </Link>
+    );
+  }
+  if (state.status === "anonymous") {
+    return (
+      <Link href="/anmelden" className={cn("flex items-center gap-2 rounded-lg text-sm font-medium text-ink-2 hover:text-ink", compact ? "" : "px-3 py-2 hover:bg-surface-2")}>
+        <LogIn className="h-[18px] w-[18px]" aria-hidden /> Anmelden
+      </Link>
+    );
+  }
+  return null;
+}
+
+/** Hinweis, solange ein Benutzer noch mit dem vom Admin vergebenen Startpasswort angemeldet ist. */
+function PasswordReminder({ pathname }: { pathname: string }) {
+  const { state } = useAccount();
+  if (state.status !== "authenticated" || !state.user.mustChangePassword || pathname.replace(/\/+$/, "") === "/konto") return null;
+  return (
+    <div className="no-print mb-5 rounded-lg border border-warning/40 bg-warning-soft px-4 py-3 text-sm">
+      Sie sind mit einem Startpasswort angemeldet.{" "}
+      <Link href="/konto" className="font-medium underline">
+        Jetzt eigenes Passwort festlegen
+      </Link>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const [moreOpen, setMoreOpen] = useState(false);
@@ -118,6 +160,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        <div className="border-t border-border px-2 py-2">
+          <AccountEntry />
+        </div>
         <div className="border-t border-border px-5 py-4 text-xs text-ink-3">
           <Link href="/methodik" className="flex items-center gap-2 hover:text-ink">
             <BookOpen className="h-4 w-4" aria-hidden /> Rechenregeln &amp; Methodik
@@ -133,7 +178,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <HcpChip />
         </header>
 
-        <main className="mx-auto w-full max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-8">
+          <PasswordReminder pathname={pathname} />
+          {children}
+        </main>
       </div>
 
       {/* Mobile-Navigation unten */}
@@ -178,6 +226,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <button type="button" onClick={() => setMoreOpen(false)} aria-label="Schließen" className="rounded p-1 text-ink-3">
                 <X className="h-5 w-5" />
               </button>
+            </div>
+            <div className="mb-3 rounded-xl border border-border px-3 py-2 empty:hidden">
+              <AccountEntry compact />
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[...NAV_ITEMS.filter((i) => !MOBILE_PRIMARY.includes(i.href)), { href: "/methodik", label: "Methodik", icon: BookOpen }].map((item) => {

@@ -1,12 +1,13 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileSpreadsheet, KeyRound, Upload } from "lucide-react";
 import { adminApi } from "@/lib/courses/adminApi";
 import { toAdminCourseRows, toDuplicateViews } from "@/lib/courses/adminViews";
 import { coursesToCsv } from "@/lib/courses/csv";
-import { datasetFromImport, recordImportRun } from "@/lib/courses/dataset";
+import { datasetFromImport, missingSeedCourses, parseDataset, recordImportRun, type CourseDataset } from "@/lib/courses/dataset";
+import { withBasePath } from "@/lib/runtime";
 import { buildQualityReport } from "@/lib/courses/quality";
 import { downloadText } from "@/lib/export/download";
 import { todayIso } from "@/lib/whs/dates";
@@ -17,6 +18,8 @@ import { AdminDashboardView, exportLinkClass } from "../AdminDashboardView";
 import { ChangesView } from "../ChangesView";
 import { DuplicatesView } from "../DuplicatesView";
 import { QualityView } from "../QualityView";
+import { UsersView } from "../UsersView";
+import { SeedCard } from "../SeedCard";
 import { useAdminData } from "./WebspaceAdminShell";
 
 function PasswordCard() {
@@ -106,12 +109,30 @@ function RestoreCard() {
   );
 }
 
+function useShippedSeed(): CourseDataset | null {
+  const [seed, setSeed] = useState<CourseDataset | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(withBasePath("/golfplaetze-daten.json"), { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json) => !cancelled && setSeed(parseDataset(json)))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return seed;
+}
+
 export function WsDashboard() {
-  const { dataset } = useAdminData();
+  const { dataset, role } = useAdminData();
+  const seed = useShippedSeed();
+  const missingSeed = useMemo(() => (seed ? missingSeedCourses(dataset, seed) : []), [seed, dataset]);
   const report = useMemo(() => buildQualityReport(dataset.courses, todayIso()), [dataset.courses]);
   const stamp = todayIso();
   return (
     <div className="space-y-5">
+      <SeedCard missing={missingSeed.map((c) => ({ id: c.id, name: c.name, city: c.city }))} />
       <AdminDashboardView
         report={report}
         runs={dataset.importRuns.slice(0, 5)}
@@ -137,10 +158,12 @@ export function WsDashboard() {
           </>
         }
       />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <RestoreCard />
-        <PasswordCard />
-      </div>
+      {role === "owner" && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <RestoreCard />
+          <PasswordCard />
+        </div>
+      )}
     </div>
   );
 }
@@ -190,4 +213,15 @@ export function WsDuplicates() {
 export function WsChanges() {
   const { dataset } = useAdminData();
   return <ChangesView changes={dataset.changes.slice(0, 300)} />;
+}
+
+export function WsUsers() {
+  const { users, role, reloadUsers } = useAdminData();
+  useEffect(() => {
+    void reloadUsers();
+  }, [reloadUsers]);
+  if (role !== "owner") {
+    return <Alert tone="warning">Die Benutzerverwaltung ist nur mit dem Haupt-Passwort des Admin-Bereichs möglich.</Alert>;
+  }
+  return <UsersView users={users} />;
 }

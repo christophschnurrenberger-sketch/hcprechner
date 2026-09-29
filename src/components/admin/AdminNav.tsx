@@ -11,13 +11,15 @@ const ITEMS = [
   { href: "/admin/qualitaet", label: "Datenqualität" },
   { href: "/admin/duplikate", label: "Duplikate" },
   { href: "/admin/aenderungen", label: "Änderungen" },
+  { href: "/admin/benutzer", label: "Benutzer" },
 ];
 
-export function AdminNav() {
+/** `showUsers`: Benutzerverwaltung nur für den Inhaber (Haupt-Passwort), nicht für Co-Admins. */
+export function AdminNav({ showUsers = false }: { showUsers?: boolean }) {
   const path = (usePathname() ?? "").replace(/\/+$/, "") || "/";
   return (
     <nav aria-label="Admin" className="flex flex-wrap gap-1 rounded-lg bg-surface-3 p-1">
-      {ITEMS.map((i) => {
+      {ITEMS.filter((i) => showUsers || i.href !== "/admin/benutzer").map((i) => {
         // /admin/anlage?id=… ist die Bearbeitungsseite der Webspace-Edition
         const active = i.href === "/admin" ? path === "/admin" : path.startsWith(i.href) || (i.href === "/admin/anlagen" && path === "/admin/anlage");
         return (

@@ -11,6 +11,8 @@ export interface ActionState {
   fieldErrors?: Record<string, string>;
   /** Webspace-Edition: nach dem Anlegen zur Bearbeitungsseite wechseln. */
   redirectTo?: string;
+  /** Benutzerverwaltung: einmalig anzuzeigende Zugangsdaten (Startpasswort). */
+  credentials?: { username: string; password: string };
 }
 
 export interface CsvApplySummary {

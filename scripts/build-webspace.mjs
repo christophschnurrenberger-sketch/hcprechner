@@ -3,7 +3,8 @@
  * Baut die Webspace-Edition und packt sie als ZIP für den FTP-Upload.
  *
  *   npm run build:webspace                 → release/golf-hcp-rechner-webspace-<version>.zip
- *   npm run build:webspace -- --seed x.json → Golfplatz-Startdaten mitliefern (JSON-Export des Admin-Bereichs)
+ *   npm run build:webspace -- --seed x.json → andere Golfplatz-Startdaten mitliefern (JSON-Export des Admin-Bereichs)
+ *   npm run build:webspace -- --no-seed     → leere Golfplatzdatenbank (Standard: data/seed/golfplaetze-bayern.json)
  *   npm run build:webspace -- --no-zip      → nur Ordner release/golf-hcp-rechner/ erzeugen
  *
  * Ablauf: statischer Next.js-Export (BUILD_TARGET=webspace) → PHP-Dateien aus webspace/php
@@ -23,7 +24,9 @@ const STAGE = join(RELEASE, APP_DIR_NAME);
 const PLACEHOLDER = "/__HCP_BASE__";
 
 const args = process.argv.slice(2);
-const seedArg = args.includes("--seed") ? args[args.indexOf("--seed") + 1] : null;
+const DEFAULT_SEED = join(ROOT, "data", "seed", "golfplaetze-bayern.json");
+// Standard: die mitgelieferten Startdaten aus data/seed (mit --seed <datei> ersetzbar, --no-seed = leer)
+const seedArg = args.includes("--seed") ? args[args.indexOf("--seed") + 1] : args.includes("--no-seed") ? null : existsSync(DEFAULT_SEED) ? DEFAULT_SEED : null;
 const skipBuild = args.includes("--skip-build");
 const noZip = args.includes("--no-zip");
 
@@ -69,7 +72,7 @@ if (seedArg) {
   if (raw.format === emptyDataset.format && Array.isArray(raw.courses)) seed = { ...raw, revision: 0, changes: [], importRuns: [] };
   else if (Array.isArray(raw.courses)) seed = { ...emptyDataset, courses: raw.courses };
   else fail(`${seedArg}: kein Golfplatz-Datensatz (erwartet { courses: [...] })`);
-  log(`Startdaten: ${seed.courses.length} Anlagen aus ${seedArg}`);
+  log(`Startdaten: ${seed.courses.length} Anlagen aus ${relative(ROOT, seedArg)}`);
 }
 writeFileSync(join(STAGE, "golfplaetze-daten.json"), JSON.stringify(seed));
 

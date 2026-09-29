@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { adminMode, isAdmin } from "@/server/adminAuth";
+import { adminMode, adminRole } from "@/server/adminAuth";
 import { Alert } from "@/components/ui";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AdminBackendProvider } from "@/components/admin/AdminBackend";
 import {
   applyCsvAction,
+  createUserAction,
+  deleteUserAction,
+  importSeedAction,
   logoutAction,
   mergeCoursesAction,
   previewCsvAction,
+  resetUserPasswordAction,
   saveCourseAction,
   saveHolesAction,
   saveLayoutAction,
   saveRatingSetAction,
   toggleRatingActiveAction,
+  updateUserAction,
   verifyRatingAction,
 } from "./actions";
 
@@ -31,11 +36,17 @@ const backend = {
   mergeCourses: mergeCoursesAction,
   previewCsv: previewCsvAction,
   applyCsv: applyCsvAction,
+  importSeed: importSeedAction,
+  createUser: createUserAction,
+  resetUserPassword: resetUserPasswordAction,
+  updateUser: updateUserAction,
+  deleteUser: deleteUserAction,
 };
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const mode = adminMode();
-  const authed = await isAdmin();
+  const role = await adminRole();
+  const authed = role !== null;
   return (
     <div className="space-y-5">
       {mode === "OPEN_DEV" && (
@@ -50,7 +61,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       )}
       {authed && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <AdminNav />
+          <AdminNav showUsers={role === "owner"} />
           {mode === "PROTECTED" && (
             <form action={logoutAction}>
               <button type="submit" className="text-sm text-ink-3 hover:text-ink">

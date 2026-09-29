@@ -40,17 +40,20 @@ Schutzdateien) und `install.php` erneut aufrufen. Da die neuen Dateien wieder de
 golf-hcp-rechner/
 ├── index.html, runden/, golfplaetze/, admin/, …   statischer Next.js-Export (alle Seiten)
 ├── _next/static/                                 JS/CSS (mit .htaccess für dauerhaftes Caching)
-├── golfplaetze-daten.json                        Startdaten der Golfplatzdatenbank (leer oder per --seed)
+├── golfplaetze-daten.json                        Startdaten der Golfplatzdatenbank (aus data/seed/, z. B. Ottobeuren)
 ├── install.php                                   Installation / Update
 ├── sitemap.php                                   Sitemap inkl. Golfanlagen
 ├── api/
 │   ├── _lib.php                                  gemeinsame Funktionen
 │   ├── courses.php                               veröffentlichter Golfplatz-Datensatz (lesen)
-│   ├── admin.php                                 Anmeldung, Datensatz laden/speichern, Passwort
+│   ├── admin.php                                 Admin-Anmeldung (Haupt-Passwort oder Co-Admin), Datensatz, Benutzerverwaltung
+│   ├── account.php                               Benutzerkonten: Anmeldung, Passwort, Runden laden/speichern
 │   └── sync.php                                  optionale anonyme Synchronisation
 └── data/                                         Serverdaten (per .htaccess gesperrt, Dateien zusätzlich PHP-geschützt)
     ├── config.php                                Passwort-Hash, Basispfad, Optionen
     ├── courses.php                               veröffentlichter Golfplatz-Datensatz
+    ├── users.php                                 Benutzerkonten (Passwort-Hashes, Rolle, Status)
+    ├── userdata/<id>.php                         Profil, Runden und Einstellungen je Benutzer (mit Revision)
     ├── backups/                                  die letzten 10 Fassungen des Datensatzes
     ├── sync/                                     Sync-Profile (nur Hash des Schlüssels)
     ├── ratelimit/, sessions/                     Schutz vor Passwort-Raten, PHP-Sitzungen
@@ -82,6 +85,27 @@ golf-hcp-rechner/
 
 Die Admin-Formulare, Listen, Qualitäts- und Duplikatansichten sind gemeinsamer Code (`src/components/admin/`);
 nur die Schreibschicht (`AdminBackend`) unterscheidet sich.
+
+## Benutzerkonten
+
+Im Admin-Bereich unter **Benutzer** (nur mit dem Haupt-Passwort aus der Installation) werden Zugänge angelegt. Das
+Startpasswort wird im Browser erzeugt, einmalig angezeigt und muss bei der ersten Anmeldung geändert werden.
+
+- Spieler melden sich unter `/anmelden/` an; ihre Daten liegen danach in `data/userdata/<id>.php` und werden bei
+  jeder Änderung automatisch gespeichert (Revisionsprüfung; bei gleichzeitiger Änderung auf zwei Geräten werden die
+  Runden zusammengeführt). Beim Abmelden werden die Kontodaten aus dem Browser entfernt.
+- Rolle „Spieler + Golfplatzpflege“: Anmeldung im Admin-Bereich mit Benutzername und Passwort; Golfplatzdaten
+  bearbeiten ja, Benutzerverwaltung, Admin-Passwort und „Datensatz einspielen“ nein.
+- Anmeldung über ein signiertes HttpOnly-Cookie (30 Tage, SameSite=Lax, Secure bei HTTPS) mit an den Passwortstand
+  gebundenem CSRF-Token. Passwort ändern oder zurücksetzen meldet alle Geräte ab; gesperrte Konten verlieren den Zugang
+  sofort. Fehlversuche werden je IP begrenzt.
+
+## Mitgelieferte Golfplatzdaten
+
+`golfplaetze-daten.json` enthält die Startdaten aus `data/seed/golfplaetze-bayern.json`. Bei einer neuen Installation
+sind sie sofort sichtbar. Bestehende Installationen behalten ihre Daten; fehlende Anlagen aus einer neuen Version
+übernimmt der Admin auf der Übersichtsseite mit „Mitgelieferte Golfplatzdaten → übernehmen“ (bereits bearbeitete
+Anlagen bleiben unverändert).
 
 ## Sicherheit
 

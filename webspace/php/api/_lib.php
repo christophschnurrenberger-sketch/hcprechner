@@ -160,18 +160,45 @@ function hcp_start_session(array $config): void
         'samesite' => 'Strict',
     ];
     session_set_cookie_params($params);
-    // Eigener Session-Ordner, falls der Standardordner des Hosters nicht beschreibbar ist
+    // Eigener Session-Ordner, falls der Standardordner des Hosters nicht beschreibbar ist;
+    // Lebensdauer passend zur 12-Stunden-Anmeldung (PHP-Standard wären 24 Minuten)
     $dir = hcp_data_dir() . '/sessions';
     if (is_dir($dir) && is_writable($dir)) {
         session_save_path($dir);
+        @ini_set('session.gc_maxlifetime', '43200');
     }
     @session_start();
 }
 
 function hcp_is_admin(): bool
 {
-    return !empty($_SESSION['hcp_admin']) && !empty($_SESSION['hcp_csrf'])
-        && isset($_SESSION['hcp_expires']) && $_SESSION['hcp_expires'] > time();
+    if (empty($_SESSION['hcp_admin']) || empty($_SESSION['hcp_csrf'])
+        || !isset($_SESSION['hcp_expires']) || $_SESSION['hcp_expires'] <= time()) {
+        return false;
+    }
+    if (hcp_admin_role() === 'editor') {
+        // Co-Admin: Konto muss weiterhin aktiv sein, die Rolle behalten und das Passwort unverändert sein
+        $user = hcp_find_user('id', (string)($_SESSION['hcp_uid'] ?? ''));
+        if ($user === null || empty($user['active']) || ($user['role'] ?? '') !== 'editor'
+            || (string)($user['passwordChangedAt'] ?? '') !== (string)($_SESSION['hcp_pwv'] ?? '')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** 'owner' (Installations-Passwort) oder 'editor' (Benutzer mit Golfplatzpflege). */
+function hcp_admin_role(): string
+{
+    return (($_SESSION['hcp_role'] ?? 'owner') === 'editor') ? 'editor' : 'owner';
+}
+
+function hcp_require_owner(): void
+{
+    hcp_require_admin();
+    if (hcp_admin_role() !== 'owner') {
+        hcp_error('Nur mit dem Haupt-Passwort des Admin-Bereichs möglich', 403);
+    }
 }
 
 function hcp_require_admin(): void
@@ -278,4 +305,224 @@ function hcp_app_version(): string
 {
     $file = hcp_root() . '/version.txt';
     return is_file($file) ? trim((string)file_get_contents($file)) : '';
+}
+
+// ---------------------------------------------------------------------------
+// Benutzerkonten
+// ---------------------------------------------------------------------------
+
+const HCP_USERNAME_PATTERN = '/^[a-z0-9][a-z0-9._-]{2,39}$/';
+const HCP_PASSWORD_MIN = 8;
+const HCP_USER_DATA_MAX = 5 * 1024 * 1024; // 5 MB je Konto
+const HCP_USER_SESSION_DAYS = 30;
+
+function hcp_users_file(): string
+{
+    return hcp_data_dir() . '/users.php';
+}
+
+function hcp_user_data_file(string $id): string
+{
+    if (!preg_match('/^[a-f0-9]{32}$/', $id)) {
+        hcp_error('Ungültige Benutzer-ID', 400);
+    }
+    return hcp_data_dir() . '/userdata/' . $id . '.php';
+}
+
+/** @return array<int, array> */
+function hcp_load_users(): array
+{
+    $raw = hcp_read_guarded(hcp_users_file());
+    $data = $raw === null ? null : json_decode($raw, true);
+    return is_array($data) && isset($data['users']) && is_array($data['users']) ? array_values($data['users']) : [];
+}
+
+function hcp_save_users(array $users): void
+{
+    hcp_write_guarded(hcp_users_file(), json_encode(['users' => array_values($users)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+}
+
+function hcp_find_user(string $field, string $value): ?array
+{
+    if ($value === '') {
+        return null;
+    }
+    foreach (hcp_load_users() as $u) {
+        if (isset($u[$field]) && (string)$u[$field] === $value) {
+            return $u;
+        }
+    }
+    return null;
+}
+
+/** Änderungen an users.php unter Dateisperre (gleichzeitige Admin-Aktionen/Anmeldungen). */
+function hcp_with_users(callable $fn)
+{
+    $lock = fopen(hcp_data_dir() . '/users.lock', 'c');
+    if ($lock === false || !flock($lock, LOCK_EX)) {
+        hcp_error('Benutzerdaten gesperrt – bitte erneut versuchen', 503);
+    }
+    try {
+        $users = hcp_load_users();
+        $result = $fn($users);
+        hcp_save_users($users);
+        return $result;
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
+function hcp_user_public(array $u): array
+{
+    return [
+        'id' => (string)$u['id'],
+        'username' => (string)$u['username'],
+        'displayName' => (string)($u['displayName'] ?? $u['username']),
+        'role' => ($u['role'] ?? 'player') === 'editor' ? 'editor' : 'player',
+        'mustChangePassword' => !empty($u['mustChangePassword']),
+    ];
+}
+
+function hcp_normalize_username(string $value): string
+{
+    return strtolower(trim($value));
+}
+
+function hcp_check_username(string $username): void
+{
+    if (!preg_match(HCP_USERNAME_PATTERN, $username)) {
+        hcp_error('Benutzername: 3–40 Zeichen, nur Kleinbuchstaben, Ziffern, Punkt, Bindestrich oder Unterstrich.', 400);
+    }
+}
+
+function hcp_check_password(string $password): void
+{
+    if (strlen($password) < HCP_PASSWORD_MIN) {
+        hcp_error('Das Passwort muss mindestens ' . HCP_PASSWORD_MIN . ' Zeichen lang sein.', 400);
+    }
+    if (strlen($password) > 200) {
+        hcp_error('Das Passwort ist zu lang.', 400);
+    }
+}
+
+function hcp_check_display_name(string $name): string
+{
+    $name = trim($name);
+    if ($name === '' || preg_match_all('/./us', $name) > 80) {
+        hcp_error('Bitte einen Namen mit höchstens 80 Zeichen angeben.', 400);
+    }
+    return $name;
+}
+
+/** Serverseitiges Geheimnis für signierte Anmelde-Cookies (wird bei Bedarf einmalig erzeugt). */
+function hcp_secret(array &$config): string
+{
+    if (empty($config['secret']) || !is_string($config['secret'])) {
+        $config['secret'] = bin2hex(random_bytes(32));
+        hcp_save_config($config);
+    }
+    return $config['secret'];
+}
+
+function hcp_b64url(string $data): string
+{
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+function hcp_b64url_decode(string $data): string
+{
+    $decoded = base64_decode(strtr($data, '-_', '+/'), true);
+    return $decoded === false ? '' : $decoded;
+}
+
+function hcp_user_cookie_params(array $config, int $expires): array
+{
+    $base = isset($config['basePath']) ? (string)$config['basePath'] : '';
+    return [
+        'expires' => $expires,
+        'path' => ($base === '' ? '' : $base) . '/',
+        'secure' => hcp_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
+/** Setzt das signierte Anmelde-Cookie eines Benutzers (30 Tage, gleitend). */
+function hcp_issue_user_token(array &$config, array $user): string
+{
+    $exp = time() + HCP_USER_SESSION_DAYS * 86400;
+    $payload = hcp_b64url(json_encode(['uid' => $user['id'], 'pwv' => (string)($user['passwordChangedAt'] ?? ''), 'exp' => $exp]));
+    $sig = hcp_b64url(hash_hmac('sha256', $payload, hcp_secret($config), true));
+    setcookie('hcp_user', $payload . '.' . $sig, hcp_user_cookie_params($config, $exp));
+    return hcp_user_csrf($config, $user);
+}
+
+function hcp_clear_user_token(array $config): void
+{
+    setcookie('hcp_user', '', hcp_user_cookie_params($config, time() - 3600));
+}
+
+/** CSRF-Token: an Benutzer und Passwortstand gebunden (Double-Submit über Header X-CSRF-Token). */
+function hcp_user_csrf(array &$config, array $user): string
+{
+    return hash_hmac('sha256', 'csrf|' . $user['id'] . '|' . (string)($user['passwordChangedAt'] ?? ''), hcp_secret($config));
+}
+
+/** Angemeldeter Benutzer aus dem Cookie oder null. */
+function hcp_current_user(array &$config): ?array
+{
+    $cookie = (string)($_COOKIE['hcp_user'] ?? '');
+    $parts = explode('.', $cookie);
+    if (count($parts) !== 2) {
+        return null;
+    }
+    $expected = hcp_b64url(hash_hmac('sha256', $parts[0], hcp_secret($config), true));
+    if (!hash_equals($expected, $parts[1])) {
+        return null;
+    }
+    $payload = json_decode(hcp_b64url_decode($parts[0]), true);
+    if (!is_array($payload) || !isset($payload['uid'], $payload['exp']) || (int)$payload['exp'] < time()) {
+        return null;
+    }
+    $user = hcp_find_user('id', (string)$payload['uid']);
+    if ($user === null || empty($user['active']) || (string)($user['passwordChangedAt'] ?? '') !== (string)($payload['pwv'] ?? '')) {
+        return null;
+    }
+    return $user;
+}
+
+function hcp_require_user(array &$config, bool $checkCsrf = true): array
+{
+    $user = hcp_current_user($config);
+    if ($user === null) {
+        hcp_error('Nicht angemeldet', 401);
+    }
+    if ($checkCsrf) {
+        $token = (string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        if ($token === '' || !hash_equals(hcp_user_csrf($config, $user), $token)) {
+            hcp_error('Sicherheitstoken ungültig – bitte neu anmelden', 401);
+        }
+    }
+    return $user;
+}
+
+/** Gespeicherte Daten eines Benutzers: ['data' => …|null, 'revision' => int, 'updatedAt' => …]. */
+function hcp_load_user_data(string $id): array
+{
+    $raw = hcp_read_guarded(hcp_user_data_file($id));
+    $stored = $raw === null ? null : json_decode($raw, true);
+    if (!is_array($stored)) {
+        return ['data' => null, 'revision' => 0, 'updatedAt' => null];
+    }
+    return [
+        'data' => $stored['data'] ?? null,
+        'revision' => (int)($stored['revision'] ?? 0),
+        'updatedAt' => $stored['updatedAt'] ?? null,
+    ];
+}
+
+function hcp_new_id(): string
+{
+    return bin2hex(random_bytes(16));
 }

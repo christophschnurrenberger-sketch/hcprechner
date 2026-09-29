@@ -11,8 +11,10 @@ import { parseRoundsCsv, roundsCsvTemplate, roundsToCsv, type RoundCsvRow } from
 import { downloadText } from "@/lib/export/download";
 import { parseDecimal } from "@/lib/courses/csv";
 import { useHcp } from "@/components/providers/HcpStoreProvider";
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Dialog, Field, Input, PageHeader, Segmented, Select } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardHeader, Checkbox, Dialog, Field, Input, PageHeader, Segmented, Select } from "@/components/ui";
 import { syncCreate, syncDelete, syncPull, syncPush } from "@/lib/sync/client";
+import { useAccount } from "@/components/providers/AccountProvider";
+import { SyncStatusBadge } from "@/components/account/SyncStatusBadge";
 import { LoadingState } from "@/components/dashboard/DashboardView";
 
 function ProfileSection() {
@@ -323,6 +325,7 @@ function DataSection() {
 }
 
 function SyncSection() {
+  const { state: account } = useAccount();
   const { data, settings, updateSettings, replaceAll } = useHcp();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(null);
@@ -342,6 +345,21 @@ function SyncSection() {
     }
   };
   const payload = () => ({ profile: data.profile, rounds: data.rounds });
+
+  if (account.status === "authenticated") {
+    return (
+      <Card>
+        <CardHeader title="Speicherung" subtitle={`Angemeldet als ${account.user.displayName}`} />
+        <CardBody className="flex flex-wrap items-center gap-3 text-sm">
+          <SyncStatusBadge />
+          <span className="text-ink-2">Profil und Runden werden automatisch in Ihrem Konto gespeichert.</span>
+          <ButtonLink href="/konto" size="sm" variant="secondary">
+            Mein Konto
+          </ButtonLink>
+        </CardBody>
+      </Card>
+    );
+  }
 
   return (
     <Card>

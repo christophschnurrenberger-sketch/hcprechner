@@ -9,6 +9,7 @@ import { SOURCE_TYPE_LABELS } from "@/lib/whs/messages";
 import { Alert, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { initialActionState as initial, type ActionState } from "@/lib/courses/adminForm";
 import { useAdminBackend } from "./AdminBackend";
+import { useKeepValuesSubmit } from "./useKeepValuesSubmit";
 
 function Message({ state }: { state: ActionState }) {
   if (!state.message) return null;
@@ -45,13 +46,26 @@ const FACILITY_LABELS: Record<string, string> = {
   DRIVING_RANGE: "Driving Range / Übungsanlage (nicht handicap-relevant)",
 };
 
-export function LoginForm({ loginAction }: { loginAction: (prev: ActionState, fd: FormData) => Promise<ActionState> }) {
-  const [state, action, pending] = useActionState(loginAction, initial);
+/** Felder der Admin-Anmeldung: Haupt-Passwort oder Benutzername + Passwort (Golfplatzpflege). */
+export function AdminLoginFields() {
   return (
-    <form action={action} className="space-y-3">
-      <Field label="Admin-Passwort" htmlFor="pw">
+    <>
+      <Field label="Benutzername" htmlFor="pw-user" hint="Nur für Benutzer mit Golfplatzpflege – für das Haupt-Passwort leer lassen.">
+        <Input id="pw-user" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} />
+      </Field>
+      <Field label="Passwort" htmlFor="pw">
         <Input id="pw" name="password" type="password" autoComplete="current-password" required />
       </Field>
+    </>
+  );
+}
+
+export function LoginForm({ loginAction }: { loginAction: (prev: ActionState, fd: FormData) => Promise<ActionState> }) {
+  const [state, action, pending] = useActionState(loginAction, initial);
+  const submit = useKeepValuesSubmit(action);
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <AdminLoginFields />
       <Message state={state} />
       <Button type="submit" disabled={pending}>
         Anmelden
@@ -64,12 +78,13 @@ export function CourseForm({ course }: { course?: CourseDto }) {
   const { saveCourse } = useAdminBackend();
   const router = useRouter();
   const [state, action, pending] = useActionState(saveCourse, initial);
+  const submit = useKeepValuesSubmit(action);
   useEffect(() => {
     if (state.redirectTo) router.push(state.redirectTo);
   }, [state, router]);
   const v = (k: keyof CourseDto) => (course?.[k] ?? "") as string | number;
   return (
-    <form action={action} className="space-y-4">
+    <form onSubmit={submit} className="space-y-4">
       {course && <input type="hidden" name="id" value={course.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name *" htmlFor="c-name">
@@ -159,8 +174,9 @@ export function LayoutForm({ courseId, layout, onDone }: { courseId: string; lay
     if (res.ok) onDone?.();
     return res;
   }, initial);
+  const submit = useKeepValuesSubmit(action);
   return (
-    <form action={action} className="space-y-3">
+    <form onSubmit={submit} className="space-y-3">
       {layout && <input type="hidden" name="id" value={layout.id} />}
       <input type="hidden" name="courseId" value={courseId} />
       <div className="grid gap-3 sm:grid-cols-4">
@@ -200,9 +216,10 @@ export function RatingSetForm({ layout, rating, onDone }: { layout: LayoutDto; r
     if (res.ok) onDone?.();
     return res;
   }, initial);
+  const submit = useKeepValuesSubmit(action);
   const id = rating?.id ?? `new-${layout.id}`;
   return (
-    <form action={action} className="space-y-3 rounded-lg border border-border bg-surface-2 p-3">
+    <form onSubmit={submit} className="space-y-3 rounded-lg border border-border bg-surface-2 p-3">
       {rating && <input type="hidden" name="id" value={rating.id} />}
       <input type="hidden" name="layoutId" value={layout.id} />
       <div className="grid gap-3 sm:grid-cols-4">
@@ -296,10 +313,11 @@ export function RatingSetForm({ layout, rating, onDone }: { layout: LayoutDto; r
 export function HolesForm({ layout }: { layout: LayoutDto }) {
   const { saveHoles } = useAdminBackend();
   const [state, action, pending] = useActionState(saveHoles, initial);
+  const submit = useKeepValuesSubmit(action);
   const count = Math.min(layout.holesCount, 36);
   const byNumber = new Map<number, HoleDto>(layout.holes.filter((h) => h.gender === null && h.teeColor === null).map((h) => [h.holeNumber, h]));
   return (
-    <form action={action} className="space-y-3">
+    <form onSubmit={submit} className="space-y-3">
       <input type="hidden" name="layoutId" value={layout.id} />
       <input type="hidden" name="count" value={count} />
       <div className="overflow-x-auto">

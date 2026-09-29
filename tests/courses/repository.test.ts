@@ -11,6 +11,7 @@ if (process.env.TEST_DATABASE_URL) {
 const repo = await import("@/server/courseRepository");
 const { closeDb } = await import("@/db/client");
 const { planCsvImport } = await import("@/lib/courses/csv");
+const { importSeedIntoDb, missingSeedInDb } = await import("@/server/seedImport");
 
 describe("Golfplatz-Repository (PGlite)", () => {
   let courseId = "";
@@ -123,5 +124,18 @@ describe("Golfplatz-Repository (PGlite)", () => {
     expect(target?.layouts.map((l) => l.name)).toContain("Kurzplatz");
     const source = await repo.getCourse(dup.id);
     expect(source?.active).toBe(false);
+  });
+
+  it("Startdaten (data/seed) werden einmalig übernommen – ohne Verifizierung, ohne abgeleitete Werte", async () => {
+    const before = (await missingSeedInDb()).length;
+    expect(before).toBeGreaterThan(0);
+    const added = await repo.loadAllCourses().then(() => importSeedIntoDb("test"));
+    expect(added).toHaveLength(before);
+    expect(await importSeedIntoDb("test")).toHaveLength(0);
+    const otto = (await repo.loadAllCourses()).find((c) => c.city === "Ottobeuren")!;
+    const yellow = otto.layouts.flatMap((l) => l.ratingSets).find((s) => s.teeColor === "Gelb")!;
+    expect(yellow).toMatchObject({ courseRating: 72.3, slopeRating: 131, par: 72, verified: false, holes: 18, nine: null });
+    const changes = await repo.recentChanges(500);
+    expect(changes.some((c) => c.source === "SEED" && c.entityType === "course")).toBe(true);
   });
 });

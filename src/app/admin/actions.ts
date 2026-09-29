@@ -12,7 +12,10 @@ import {
   type ActionState,
   type CsvPreviewState,
 } from "@/lib/courses/adminForm";
-import { loginAdmin, logoutAdmin, requireAdmin } from "@/server/adminAuth";
+import { loginAdmin, logoutAdmin, requireAdmin, requireOwner } from "@/server/adminAuth";
+import { createUser, deleteUser, resetUserPassword, updateUser } from "@/server/userRepository";
+import { UserError } from "@/server/userRepository";
+import { importSeedIntoDb } from "@/server/seedImport";
 import {
   applyCsvPlan,
   createCourse,
@@ -34,8 +37,9 @@ function revalidate() {
 }
 
 export async function loginAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const okLogin = await loginAdmin(String(fd.get("password") ?? ""));
-  if (!okLogin) return { ok: false, message: "Passwort falsch." };
+  const username = String(fd.get("username") ?? "");
+  const okLogin = await loginAdmin(String(fd.get("password") ?? ""), username);
+  if (!okLogin) return { ok: false, message: username.trim() ? "Benutzername oder Passwort falsch (oder keine Berechtigung für die Golfplatzpflege)." : "Passwort falsch." };
   redirect("/admin");
 }
 
@@ -142,5 +146,80 @@ export async function applyCsvAction(_prev: CsvPreviewState, fd: FormData): Prom
     return { plan, result, error: null, text: "" };
   } catch (error) {
     return { plan: null, result: null, error: error instanceof Error ? error.message : "Fehler", text: "" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Benutzerverwaltung
+// ---------------------------------------------------------------------------
+
+function userFailure(error: unknown): ActionState {
+  if (error instanceof UserError) return { ok: false, message: error.message };
+  return actionFailure(error);
+}
+
+export async function createUserAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  try {
+    await requireOwner();
+    const password = String(fd.get("password") ?? "");
+    const user = await createUser({
+      username: String(fd.get("username") ?? ""),
+      displayName: String(fd.get("displayName") ?? ""),
+      role: String(fd.get("role") ?? "player"),
+      password,
+    });
+    revalidatePath("/admin/benutzer");
+    return actionOk(`Benutzer „${user.username}“ angelegt.`, { credentials: { username: user.username, password } });
+  } catch (error) {
+    return userFailure(error);
+  }
+}
+
+export async function resetUserPasswordAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  try {
+    await requireOwner();
+    const password = String(fd.get("password") ?? "");
+    await resetUserPassword(String(fd.get("id")), password);
+    revalidatePath("/admin/benutzer");
+    return actionOk("Neues Passwort gesetzt.", { credentials: { username: String(fd.get("username") ?? ""), password } });
+  } catch (error) {
+    return userFailure(error);
+  }
+}
+
+export async function updateUserAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  try {
+    await requireOwner();
+    const patch: { displayName?: string; role?: string; active?: boolean } = {};
+    if (fd.has("displayName")) patch.displayName = String(fd.get("displayName"));
+    if (fd.has("role")) patch.role = String(fd.get("role"));
+    if (fd.has("active")) patch.active = fd.get("active") === "true";
+    await updateUser(String(fd.get("id")), patch);
+    revalidatePath("/admin/benutzer");
+    return actionOk("Gespeichert.");
+  } catch (error) {
+    return userFailure(error);
+  }
+}
+
+export async function deleteUserAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  try {
+    await requireOwner();
+    await deleteUser(String(fd.get("id")));
+    revalidatePath("/admin/benutzer");
+    return actionOk("Benutzer gelöscht.");
+  } catch (error) {
+    return userFailure(error);
+  }
+}
+
+export async function importSeedAction(): Promise<ActionState> {
+  try {
+    await requireAdmin();
+    const added = await importSeedIntoDb("admin");
+    revalidate();
+    return actionOk(added.length ? `Übernommen: ${added.join(", ")}.` : "Alle mitgelieferten Anlagen sind bereits vorhanden.");
+  } catch (error) {
+    return actionFailure(error);
   }
 }

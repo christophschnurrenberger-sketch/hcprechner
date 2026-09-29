@@ -12,14 +12,16 @@ src/lib/importer/        Parser der BGV-Clubübersicht (Discovery)
 src/lib/rounds/          Wizard-Formularzustand → unveränderliche Runde
 src/lib/store/           Local Mode (Browser-Speicher), Import/Export-Schema
 src/lib/sync/            Synchronisation (Payload-Prüfung, Client für Node-API bzw. PHP)
+src/lib/account/         Benutzerkonten: Regeln, Client, Zusammenführung, Speicher-Engine (verzögert, Revision, 409-Merge)
 src/lib/export/          CSV/PDF-Export, Runden-CSV-Import
 src/lib/runtime.ts       Build-Variante (node | webspace), Basispfad
 src/db/                  Drizzle-Schema, Client (PostgreSQL oder PGlite)
-src/server/              Repositories (Platzdaten, Sync), Admin-Schutz
+src/server/              Repositories (Platzdaten, Sync, Benutzer), Admin-/Benutzer-Anmeldung, Startdaten-Import
 src/app/                 Next.js-Seiten; *.server.tsx nur Node-Edition, *.static.tsx nur Webspace-Edition
 src/components/          UI (Admin-Formulare/-Ansichten gemeinsam für beide Editionen)
 webspace/php/            install.php, api/*.php, Schutzdateien der Webspace-Edition
-scripts/                 Bayern-Importer, DB-Check, build-webspace.mjs
+data/seed/               mitgelieferte Golfplatz-Startdaten (JSON-Datensatz)
+scripts/                 Bayern-Importer, DB-Check, Startdaten (db:seed), build-webspace.mjs
 tests/                   Vitest
 ```
 
@@ -34,6 +36,7 @@ Die Berechnungslogik hat keine Abhängigkeit zu React oder Next.js. Die UI ruft 
 | Golfplatzdaten | PostgreSQL/PGlite über `src/server/courseRepository.ts` | JSON-Datensatz über `src/lib/courses/dataset.ts` + `api/*.php` |
 | Admin-Schreibschicht | Server Actions (`src/app/admin/actions.ts`) | `WebspaceAdminShell` (Browser) + `api/admin.php` |
 | Seiten mit Parametern | `/golfplaetze/<region>/<slug>`, `/admin/anlagen/<id>` | `/golfplaetze/anlage/?slug=`, `/admin/anlage/?id=` |
+| Benutzerkonten | `app_users`/`app_user_data`, scrypt, signiertes Cookie, `/api/account` | `data/users.php`, `data/userdata/`, `password_hash`, signiertes Cookie, `api/account.php` |
 
 Gemeinsam: alle übrigen Seiten, die komplette Engine, Runden (`/runde/?id=`), die Admin-Formulare und -Ansichten
 (`src/components/admin/`, Schreibzugriff über den `AdminBackend`-Kontext), Validierung (Zod-Schemas) und

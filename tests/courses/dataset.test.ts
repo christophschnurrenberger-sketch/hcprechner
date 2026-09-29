@@ -10,6 +10,7 @@ import {
   emptyDataset,
   findCourse,
   mergeCourses,
+  mergeSeedCourses,
   parseDataset,
   replaceHoles,
   setRatingSetActive,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/courses/dataset";
 import { runCourseSearch } from "@/lib/courses/summary";
 import { actionFailure, formToObject, parseHolesForm } from "@/lib/courses/adminForm";
+import { ratingSetInputSchema } from "@/lib/courses/validation";
 
 // Deterministische IDs/Zeit für die Tests; fiktive Testdaten.
 function ops(): OperationContext {
@@ -262,3 +264,45 @@ describe("Admin-Formulare (gemeinsam für beide Editionen)", () => {
     }
   });
 });
+
+describe("Mitgelieferte Startdaten", () => {
+  it("Startdaten-Datei ist gültig und erfindet keine Werte (nur belegte Ratings, keine 9-Loch-Ableitung)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const seed = parseDataset(JSON.parse(readFileSync("data/seed/golfplaetze-bayern.json", "utf8")));
+    const otto = seed.courses.find((c) => c.city === "Ottobeuren")!;
+    expect(otto.region).toBe("SCHWABEN");
+    const sets = otto.layouts.flatMap((l) => l.ratingSets);
+    expect(sets.every((s) => s.holes === 18 && s.nine === null)).toBe(true);
+    expect(sets.every((s) => s.sourceType && s.sourceUrl)).toBe(true);
+    // Nicht direkt gegen die Quelle geprüft → nicht verifiziert (Freigabe im Admin-Bereich)
+    expect(sets.every((s) => s.verified === false)).toBe(true);
+    for (const layout of otto.layouts) for (const s of layout.ratingSets) expect(() => ratingSetInputCheck(s)).not.toThrow();
+  });
+
+  it("übernimmt nur fehlende Anlagen und lässt bearbeitete unverändert", async () => {
+    const { readFileSync } = await import("node:fs");
+    const seed = parseDataset(JSON.parse(readFileSync("data/seed/golfplaetze-bayern.json", "utf8")));
+    const first = mergeSeedCourses(emptyDataset(), seed, ops());
+    expect(first.added).toHaveLength(seed.courses.length);
+    expect(first.dataset.changes[0]).toMatchObject({ source: "SEED", action: "CREATE" });
+    expect(first.dataset.importRuns[0]).toMatchObject({ kind: "SEED" });
+    // Admin ändert die Anlage; erneutes Übernehmen überschreibt nichts
+    const id = first.dataset.courses[0].id;
+    const edited = updateCourse(first.dataset, id, { ...first.dataset.courses[0], notes: "geprüft", layouts: undefined }, ops());
+    const second = mergeSeedCourses(edited, seed, ops());
+    expect(second.added).toHaveLength(0);
+    expect(second.existing).toHaveLength(seed.courses.length);
+    expect(findCourse(second.dataset, id)?.notes).toBe("geprüft");
+    expect(second.dataset).toBe(edited);
+  });
+
+  it("erkennt vorhandene Anlagen auch unter anderer ID (gleicher Name + Ort)", () => {
+    const seedDs = createCourse(emptyDataset(), { name: "Golfclub Beispiel", city: "Adorf" }, ops()).dataset;
+    const own = createCourse(emptyDataset(), { name: "Golfclub Beispiel", city: "Adorf" }, { ...ops(), newId: () => "11111111-1111-4111-8111-111111111111" }).dataset;
+    expect(mergeSeedCourses(own, seedDs, ops()).added).toHaveLength(0);
+  });
+});
+
+function ratingSetInputCheck(s: object) {
+  return ratingSetInputSchema.parse({ ...s, verified: false });
+}
