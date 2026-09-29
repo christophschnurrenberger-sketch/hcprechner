@@ -21,7 +21,8 @@ export function requireRatingValues(
   rating: RatingSnapshot,
   holes: 9 | 18,
   rules: WhsRuleSet,
-): RatingValues {
+  options: { requirePar?: boolean } = {},
+): RatingValues & { parKnown: boolean } {
   const cfg = rules.config;
   if (rating.courseRating === null || rating.courseRating === undefined) {
     throw new WhsInputError("COURSE_RATING_MISSING");
@@ -29,7 +30,8 @@ export function requireRatingValues(
   if (rating.slopeRating === null || rating.slopeRating === undefined) {
     throw new WhsInputError("SLOPE_RATING_MISSING");
   }
-  if (rating.par === null || rating.par === undefined) {
+  const parKnown = rating.par !== null && rating.par !== undefined;
+  if (!parKnown && options.requirePar !== false) {
     throw new WhsInputError("PAR_MISSING");
   }
   if (rating.holes !== holes) {
@@ -53,10 +55,27 @@ export function requireRatingValues(
   ) {
     throw new WhsInputError("COURSE_RATING_IMPLAUSIBLE", { value: rating.courseRating, holes });
   }
-  if (!Number.isInteger(rating.par) || rating.par < holes * 3 || rating.par > holes * 6) {
-    throw new WhsInputError("PAR_IMPLAUSIBLE", { value: rating.par, holes });
+  if (parKnown && (!Number.isInteger(rating.par) || rating.par! < holes * 3 || rating.par! > holes * 6)) {
+    throw new WhsInputError("PAR_IMPLAUSIBLE", { value: rating.par!, holes });
   }
-  return { courseRating: rating.courseRating, slopeRating: rating.slopeRating, par: rating.par };
+  return {
+    courseRating: rating.courseRating,
+    slopeRating: rating.slopeRating,
+    par: parKnown ? rating.par! : Number.NaN,
+    parKnown,
+  };
+}
+
+/**
+ * GBE direkt eingegeben, Par unbekannt (z. B. CSV-Import): Das Score Differential
+ * benötigt kein Par. Course Handicap und Plausibilitätsprüfungen entfallen.
+ */
+function agsWithoutPar(round: Round, holes: 9 | 18, rules: WhsRuleSet, issues: CalcIssue[]): number {
+  const ags = round.entry.adjustedGrossScore;
+  if (ags === null || ags === undefined || !Number.isInteger(ags)) throw new WhsInputError("AGS_MISSING");
+  if (ags < holes * rules.config.plausibility.minAgsPerHole) throw new WhsInputError("AGS_IMPLAUSIBLE", { value: ags });
+  issues.push({ code: "PAR_MISSING_AGS", severity: "warning" });
+  return ags;
 }
 
 interface AgsResult {
@@ -237,14 +256,21 @@ export function evaluateRound(
       gbe = result.gbe;
       scoreDifferential = result.differential;
     } else if (round.holes === 9) {
-      const rating = requireRatingValues(round.rating, 9, rules);
-      courseHandicap = rules.calculateNineHoleCourseHandicap({
-        handicapIndex: startHandicapIndex,
-        ...rating,
-      });
-      const ags = determineAdjustedGrossScore(round, 9, courseHandicap, rules, issues);
+      const rating = requireRatingValues(round.rating, 9, rules, { requirePar: round.entry.mode !== "AGS" });
+      let ags: AgsResult;
+      if (rating.parKnown) {
+        courseHandicap = rules.calculateNineHoleCourseHandicap({
+          handicapIndex: startHandicapIndex,
+          courseRating: rating.courseRating,
+          slopeRating: rating.slopeRating,
+          par: rating.par,
+        });
+        ags = determineAdjustedGrossScore(round, 9, courseHandicap, rules, issues);
+        plausibilityWarnings(ags.ags, rating.par, 9, issues);
+      } else {
+        ags = { ags: agsWithoutPar(round, 9, rules, issues) };
+      }
       gbe = ags.gbe;
-      plausibilityWarnings(ags.ags, rating.par, 9, issues);
       const nine = rules.calculateNineHoleScoreDifferential({
         adjustedGrossScore: ags.ags,
         courseRating: rating.courseRating,
@@ -257,7 +283,7 @@ export function evaluateRound(
         adjustedGrossScore: ags.ags,
         courseRating: rating.courseRating,
         slopeRating: rating.slopeRating,
-        par: rating.par,
+        par: rating.parKnown ? rating.par : null,
         pcc: round.pcc,
         pccApplied: nine.pccApplied,
         playedDifferentialUnrounded: nine.played.unrounded,
@@ -269,14 +295,21 @@ export function evaluateRound(
         value: nine.value,
       };
     } else {
-      const rating = requireRatingValues(round.rating, 18, rules);
-      courseHandicap = rules.calculateCourseHandicap({
-        handicapIndex: startHandicapIndex,
-        ...rating,
-      });
-      const ags = determineAdjustedGrossScore(round, 18, courseHandicap, rules, issues);
+      const rating = requireRatingValues(round.rating, 18, rules, { requirePar: round.entry.mode !== "AGS" });
+      let ags: AgsResult;
+      if (rating.parKnown) {
+        courseHandicap = rules.calculateCourseHandicap({
+          handicapIndex: startHandicapIndex,
+          courseRating: rating.courseRating,
+          slopeRating: rating.slopeRating,
+          par: rating.par,
+        });
+        ags = determineAdjustedGrossScore(round, 18, courseHandicap, rules, issues);
+        plausibilityWarnings(ags.ags, rating.par, 18, issues);
+      } else {
+        ags = { ags: agsWithoutPar(round, 18, rules, issues) };
+      }
       gbe = ags.gbe;
-      plausibilityWarnings(ags.ags, rating.par, 18, issues);
       const sd = rules.calculateScoreDifferential({
         adjustedGrossScore: ags.ags,
         courseRating: rating.courseRating,
@@ -288,7 +321,7 @@ export function evaluateRound(
         adjustedGrossScore: ags.ags,
         courseRating: rating.courseRating,
         slopeRating: rating.slopeRating,
-        par: rating.par,
+        par: rating.parKnown ? rating.par : null,
         pcc: round.pcc,
         pccApplied: round.pcc,
         unrounded: sd.unrounded,

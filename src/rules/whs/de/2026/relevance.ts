@@ -29,9 +29,11 @@ export function determineHandicapRelevance(round: Round, cfg: WhsRuleConfig): Re
     checks.push({ code: "IMPORTED_DIFFERENTIAL", ok: true });
   } else {
     const r = round.rating;
+    // Par ist für das Score Differential nicht nötig (bei direkt eingegebenem GBE optional).
+    const parOk = round.entry.mode === "AGS" || (r.par !== null && r.par !== undefined);
     const complete =
-      r.courseRating !== null && r.slopeRating !== null && r.par !== null &&
-      r.courseRating !== undefined && r.slopeRating !== undefined && r.par !== undefined;
+      r.courseRating !== null && r.slopeRating !== null &&
+      r.courseRating !== undefined && r.slopeRating !== undefined && parOk;
     checks.push({ code: complete ? "RATING_VALID" : "RATING_MISSING", ok: complete });
     if (round.holes === 9) {
       const nineRating = r.holes === 9;

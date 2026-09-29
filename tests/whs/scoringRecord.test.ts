@@ -174,10 +174,25 @@ describe("Fehlende und ungültige Werte", () => {
     expect(r.issues.map((i) => i.code)).toContain("SLOPE_RATING_MISSING");
   });
 
-  it("fehlendes Par → Fehler", () => {
-    const round = agsRound("2026-05-01", 95, { rating: rating18({ par: null }) });
+  it("fehlendes Par bei Scorekarte → Fehler", () => {
+    const round = baseRound({
+      date: "2026-05-01",
+      rating: rating18({ par: null }),
+      holeData: Array.from({ length: 18 }, (_, i) => ({ number: i + 1, par: 4, strokeIndex: i + 1 })),
+      entry: { mode: "HOLE_BY_HOLE", holeScores: Array.from({ length: 18 }, () => 5) },
+    });
     const r = calculateScoringRecord(makeProfile(), [round], { today: TODAY }).rounds[0];
     expect(r.issues.map((i) => i.code)).toContain("PAR_MISSING");
+    expect(r.inRecord).toBe(false);
+  });
+
+  it("fehlendes Par bei direkt eingegebenem GBE → SD wird berechnet, Warnung", () => {
+    const round = agsRound("2026-05-01", 94, { rating: rating18({ par: null, courseRating: 71.8, slopeRating: 135 }) });
+    const r = calculateScoringRecord(makeProfile(), [round], { today: TODAY }).rounds[0];
+    expect(r.scoreDifferential?.value).toBe(18.6);
+    expect(r.issues.find((i) => i.code === "PAR_MISSING_AGS")?.severity).toBe("warning");
+    expect(r.courseHandicap).toBeUndefined();
+    expect(r.inRecord).toBe(true);
   });
 
   it("PCC außerhalb −1…+3 → Fehler", () => {
