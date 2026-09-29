@@ -4,26 +4,12 @@ import { useEffect, useState } from "react";
 import { Loader2, MapPin, Search } from "lucide-react";
 import { regionByKey } from "@/lib/courses/regions";
 import type { CourseDto } from "@/lib/courses/types";
+import { fetchCourse, searchCoursesRemote } from "@/lib/courses/client";
+import type { CourseSummary } from "@/lib/courses/summary";
 import { cn } from "@/lib/format";
 import { Alert, Badge, Input } from "@/components/ui";
 
-export interface CourseSummary {
-  id: string;
-  slug: string;
-  name: string;
-  officialName: string | null;
-  city: string | null;
-  postalCode: string | null;
-  region: string | null;
-  facilityType: string;
-  verified: boolean;
-  has9: boolean;
-  has18: boolean;
-  teeColors: string[];
-  verifiedRatingCount: number;
-  distanceKm: number | null;
-}
-
+/** Verzögerte Golfplatzsuche (Name, Ort, PLZ) für Auswahllisten. */
 export function useCourseSearch(query: string, extra = "") {
   const [state, setState] = useState<{ loading: boolean; error: string | null; results: CourseSummary[]; totalCourses: number | null }>({
     loading: true,
@@ -36,9 +22,9 @@ export function useCourseSearch(query: string, extra = "") {
     const timer = setTimeout(async () => {
       setState((s) => ({ ...s, loading: true }));
       try {
-        const res = await fetch(`/api/courses?q=${encodeURIComponent(query)}${extra}`, { signal: controller.signal });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "Fehler");
+        const params = new URLSearchParams(extra);
+        params.set("q", query);
+        const json = await searchCoursesRemote(params, controller.signal);
         setState({ loading: false, error: null, results: json.results, totalCourses: json.totalCourses });
       } catch (error) {
         if ((error as Error).name === "AbortError") return;
@@ -51,13 +37,6 @@ export function useCourseSearch(query: string, extra = "") {
     };
   }, [query, extra]);
   return state;
-}
-
-export async function fetchCourse(id: string): Promise<CourseDto> {
-  const res = await fetch(`/api/courses/${encodeURIComponent(id)}`);
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error ?? "Anlage konnte nicht geladen werden");
-  return json as CourseDto;
 }
 
 export function CoursePicker({
@@ -102,7 +81,7 @@ export function CoursePicker({
       {!search.error && search.totalCourses === 0 && (
         <Alert tone="info" title="Die Golfplatzdatenbank ist noch leer">
           Es sind noch keine Anlagen importiert. Nutzen Sie „Manuell / Ausland“ und übernehmen Sie Course Rating, Slope und Par von der
-          offiziellen Scorekarte – oder befüllen Sie die Datenbank im Admin-Bereich (CSV-Import bzw. Bayern-Importer).
+          offiziellen Scorekarte – oder befüllen Sie die Datenbank im Admin-Bereich (CSV-Import).
         </Alert>
       )}
       <ul className="max-h-[22rem] divide-y divide-border overflow-y-auto rounded-xl border border-border bg-surface">

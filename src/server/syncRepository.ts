@@ -6,7 +6,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { playerProfiles, rounds as roundsTable } from "@/db/schema";
-import { exportSchema } from "@/lib/store/schema";
+import { parsePayload } from "@/lib/sync/payload";
 import type { PlayerProfile, Round } from "@/lib/whs/types";
 
 const hash = (key: string) => createHash("sha256").update(key).digest("hex");
@@ -63,10 +63,7 @@ function fromRow(row: typeof roundsTable.$inferSelect): Round {
   };
 }
 
-export function parsePayload(body: unknown): { profile: PlayerProfile; rounds: Round[] } {
-  const parsed = exportSchema.parse({ version: 1, ...(body as object) });
-  return { profile: parsed.profile as PlayerProfile, rounds: parsed.rounds as Round[] };
-}
+export { parsePayload };
 
 async function authorize(profileId: string, key: string) {
   const db = await getDb();

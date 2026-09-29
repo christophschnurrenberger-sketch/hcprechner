@@ -6,6 +6,7 @@ import { defaultRuleSet } from "@/rules/whs/registry";
 import { cn, formatDate, formatDecimal, formatHcp, formatSigned } from "@/lib/format";
 import type { HandicapRevision, Round, WindowEntry } from "@/lib/whs/types";
 import { Badge, InfoTip } from "@/components/ui";
+import { roundPath } from "@/lib/courses/paths";
 
 export function tableRowLabel(recordSize: number): string {
   const row = defaultRuleSet.lookupIndexTable(recordSize);
@@ -71,7 +72,7 @@ export function WindowChips({
         return (
           <li key={w.roundId}>
             <Link
-              href={`/runden/${encodeURIComponent(w.roundId)}`}
+              href={roundPath(w.roundId)}
               title={`${formatDate(w.date)}${round ? " · " + round.title : ""}${w.esrTotal ? ` · ESR ${formatSigned(w.esrTotal, 0)} (original ${formatDecimal(w.originalSD)})` : ""}`}
               className={cn(
                 "tabular inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold",

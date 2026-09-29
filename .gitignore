@@ -19,6 +19,8 @@
 
 # production
 /build
+# Webspace-Paket (npm run build:webspace)
+/release/
 
 # misc
 .DS_Store

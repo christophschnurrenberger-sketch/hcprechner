@@ -6,6 +6,7 @@ import { cn, formatDate, formatDateShort, formatDecimal, formatHcp, formatPcc, f
 import { CATEGORY_SHORT, EXCLUSION_TEXTS, RESULT_STATUS_LABELS } from "@/lib/whs/messages";
 import type { Round, RoundResult } from "@/lib/whs/types";
 import { Badge, Segmented, Select } from "@/components/ui";
+import { roundPath } from "@/lib/courses/paths";
 
 export type RoundFilter = "ALL" | "9" | "18" | "TOURNAMENT" | "RPR" | "RELEVANT" | "NOT_RELEVANT";
 export type RoundLimit = 5 | 10 | 20 | 0;
@@ -106,7 +107,7 @@ export function RoundTable({ rows: allRows, initialLimit = 0, showRelevance = fa
       <ul className="space-y-2 md:hidden">
         {rows.map(({ round, result }) => (
           <li key={round.id}>
-            <Link href={`/runden/${encodeURIComponent(round.id)}`} className="block rounded-xl border border-border bg-surface p-3">
+            <Link href={roundPath(round.id)} className="block rounded-xl border border-border bg-surface p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{round.title}</p>
@@ -161,7 +162,7 @@ export function RoundTable({ rows: allRows, initialLimit = 0, showRelevance = fa
                 <tr key={round.id} className={cn("border-t border-border hover:bg-surface-2", result.currentlyCounted && "bg-brand-soft/60")}>
                   <td className="px-3 py-2">{formatDateShort(round.date)}</td>
                   <td className="max-w-[14rem] truncate px-3 py-2">
-                    <Link href={`/runden/${encodeURIComponent(round.id)}`} className="font-medium text-ink hover:text-brand hover:underline">
+                    <Link href={roundPath(round.id)} className="font-medium text-ink hover:text-brand hover:underline">
                       {round.title}
                     </Link>
                     <span className="ml-1.5 text-xs text-ink-3">{CATEGORY_SHORT[round.category]}</span>

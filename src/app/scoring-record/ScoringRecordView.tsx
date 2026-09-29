@@ -9,6 +9,7 @@ import { HandicapCalculation, deviationReasons, tableRowLabel } from "@/componen
 import { RoundTable, useRoundRows } from "@/components/rounds/RoundTable";
 import { useRoundLookup } from "@/components/handicap/useRoundLookup";
 import { LoadingState } from "@/components/dashboard/DashboardView";
+import { roundPath } from "@/lib/courses/paths";
 
 export function ScoringRecordView() {
   const { ready, rounds, result } = useHcp();
@@ -57,7 +58,7 @@ export function ScoringRecordView() {
                     return (
                       <li key={w.roundId}>
                         <Link
-                          href={`/runden/${encodeURIComponent(w.roundId)}`}
+                          href={roundPath(w.roundId)}
                           className={cn("flex items-center gap-3 px-5 py-2 text-sm hover:bg-surface-2", w.counted && "bg-brand-soft/70")}
                         >
                           <span className="tabular w-6 text-right text-xs text-ink-3">{i + 1}.</span>

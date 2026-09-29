@@ -35,10 +35,12 @@ import {
 import { cn, formatDate, formatDecimal, formatHcp, formatPcc } from "@/lib/format";
 import { useHcp } from "@/components/providers/HcpStoreProvider";
 import { Alert, Badge, Button, Card, CardBody, Checkbox, ChoiceCards, Field, Input, Select, Textarea } from "@/components/ui";
-import { CoursePicker, fetchCourse } from "@/components/courses/CoursePicker";
+import { CoursePicker } from "@/components/courses/CoursePicker";
+import { fetchCourse } from "@/lib/courses/client";
 import { ScorecardInput } from "@/components/rounds/ScorecardInput";
 import { RoundResultSummary } from "@/components/rounds/RoundResultSummary";
 import { LoadingState } from "@/components/dashboard/DashboardView";
+import { roundPath } from "@/lib/courses/paths";
 
 type StepKey = "date" | "type" | "course" | "layout" | "holes" | "gender" | "tee" | "score" | "pcc" | "review";
 
@@ -289,7 +291,7 @@ export function RoundWizard({ editId }: { editId?: string | null }) {
   const save = () => {
     if (!preview) return;
     saveRound(preview.round);
-    router.push(`/runden/${encodeURIComponent(preview.round.id)}?gespeichert=1`);
+    router.push(roundPath(preview.round.id, { gespeichert: "1" }));
   };
 
   const entryModes: { value: EntryMode; label: string; description: string; disabled?: boolean }[] = [

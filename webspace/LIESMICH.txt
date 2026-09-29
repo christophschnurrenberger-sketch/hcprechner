@@ -1,0 +1,73 @@
+Golf HCP Rechner – WHS 2026 · Webspace-Edition
+Version {{VERSION}}
+=====================================================================
+
+Diese Fassung läuft auf jedem normalen PHP-Webspace (Strato, IONOS, all-inkl,
+netcup, Hetzner, …). Es wird KEINE Datenbank und KEIN Node.js benötigt.
+
+Voraussetzungen
+---------------
+- PHP 7.4 oder neuer (empfohlen: PHP 8.x – im Kundenmenü des Hosters einstellbar)
+- Apache-Webspace (Standard bei deutschen Hostern)
+- ca. 6 MB Speicherplatz
+
+Installation in 3 Schritten
+---------------------------
+1. ZIP-Datei auf dem eigenen Rechner entpacken. Es entsteht der Ordner
+   „golf-hcp-rechner“.
+
+2. Per FTP (z. B. FileZilla) hochladen – wahlweise:
+   a) den ganzen Ordner „golf-hcp-rechner“ → Adresse später
+      https://ihre-domain.de/golf-hcp-rechner/
+      (Der Ordner darf vorher umbenannt werden, z. B. in „hcp“.)
+   b) nur den INHALT des Ordners direkt in das Hauptverzeichnis der Domain
+      → Adresse https://ihre-domain.de/
+
+   WICHTIG: Auch die „versteckten“ Dateien mit Punkt am Anfang hochladen
+   (.htaccess in den Ordnern data/ und _next/static/). In FileZilla:
+   Menü „Server“ → „Anzeige versteckter Dateien erzwingen“.
+
+3. Im Browser aufrufen:
+      https://ihre-domain.de/golf-hcp-rechner/install.php
+   (bzw. https://ihre-domain.de/install.php bei Variante b)
+   Der Installationsordner wird automatisch erkannt. Admin-Passwort festlegen,
+   „Installieren“ klicken – fertig.
+
+Was macht install.php?
+----------------------
+- trägt den Installationsordner in alle Seiten ein,
+- legt data/config.php an (nur der Passwort-Hash, kein Klartext),
+- schreibt .htaccess (eigene 404-Seite, Caching) und – bei Installation in der
+  Domain-Wurzel – robots.txt.
+
+Danach
+------
+- Anwendung:     https://ihre-domain.de/<ordner>/
+- Admin-Bereich: https://ihre-domain.de/<ordner>/admin/
+  Dort Golfanlagen anlegen oder Ratingdaten per CSV importieren (Vorlage im
+  Import-Bereich). Course Rating und Slope nur aus offiziellen Quellen
+  übernehmen – die Anwendung erfindet oder schätzt keine Werte.
+- Die Runden jedes Nutzers bleiben in dessen Browser (Local Mode). Optional
+  kann in den Einstellungen eine anonyme Synchronisation genutzt werden.
+
+Update auf eine neue Version
+----------------------------
+Neue ZIP-Datei entpacken, alle Dateien über die alten hochladen (der Ordner
+data/ mit Golfplatzdaten und Einstellungen bleibt erhalten) und install.php
+erneut aufrufen – zur Bestätigung genügt das Admin-Passwort.
+
+Datensicherung
+--------------
+Alle Serverdaten liegen im Ordner data/ (Golfplatzdaten, die letzten 10
+Sicherungen in data/backups/, Sync-Profile in data/sync/). Zusätzlich gibt es
+im Admin-Bereich einen JSON-/CSV-Export.
+
+Probleme?
+---------
+- Weiße Seite oder Seite ohne Formatierung: install.php noch nicht ausgeführt.
+- „Nicht beschreibbar“: Dateirechte per FTP setzen (Ordner 755, Dateien 644).
+- Fehler 500 nach der Installation: install.php stellt die .htaccess
+  automatisch auf eine vereinfachte Fassung um; sonst .htaccess im
+  Installationsordner löschen – die Anwendung funktioniert auch ohne.
+- Admin-Passwort vergessen: data/config.php per FTP löschen und install.php
+  erneut aufrufen (Golfplatzdaten bleiben erhalten).

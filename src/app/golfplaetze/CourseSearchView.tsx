@@ -1,40 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LocateFixed, MapPin, Search } from "lucide-react";
 import { BAVARIAN_REGIONS, regionByKey } from "@/lib/courses/regions";
 import { coursePath } from "@/lib/courses/paths";
 import { TEE_COLORS, TEE_SWATCH, genderLabel } from "@/lib/courses/tees";
 import { formatDecimal } from "@/lib/format";
+import { searchCoursesRemote } from "@/lib/courses/client";
+import type { CourseSummary } from "@/lib/courses/summary";
 import { Alert, Badge, Button, Card, CardBody, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui";
 
-interface ResultLayout {
-  id: string;
-  name: string;
-  type: string;
-  holesCount: number;
-  ratings: { gender: "M" | "F"; teeColor: string; holes: number; nine: string | null; par: number | null; courseRating: number | null; slopeRating: number | null; verified: boolean; validTo: string | null }[];
-}
-
-interface Result {
-  id: string;
-  slug: string;
-  name: string;
-  city: string | null;
-  postalCode: string | null;
-  region: string | null;
-  has9: boolean;
-  has18: boolean;
-  verifiedRatingCount: number;
-  distanceKm: number | null;
-  layouts: ResultLayout[];
-}
-
-
 export function CourseSearchView() {
-  const [q, setQ] = useState("");
-  const [region, setRegion] = useState("");
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(searchParams.get("q") ?? "");
+  const [region, setRegion] = useState(() => {
+    const r = searchParams.get("region") ?? "";
+    return BAVARIAN_REGIONS.some((x) => x.key === r) ? r : "";
+  });
   const [plz, setPlz] = useState("");
   const [has9, setHas9] = useState(false);
   const [has18, setHas18] = useState(false);
@@ -42,7 +26,7 @@ export function CourseSearchView() {
   const [near, setNear] = useState<{ lat: number; lon: number } | null>(null);
   const [maxKm, setMaxKm] = useState("50");
   const [geoError, setGeoError] = useState<string | null>(null);
-  const [state, setState] = useState<{ loading: boolean; error: string | null; results: Result[]; total: number; totalCourses: number | null }>({
+  const [state, setState] = useState<{ loading: boolean; error: string | null; results: CourseSummary[]; total: number; totalCourses: number | null }>({
     loading: true,
     error: null,
     results: [],
@@ -66,9 +50,7 @@ export function CourseSearchView() {
     const timer = setTimeout(async () => {
       setState((s) => ({ ...s, loading: true }));
       try {
-        const res = await fetch(`/api/courses?${params}`, { signal: controller.signal });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error);
+        const json = await searchCoursesRemote(params, controller.signal);
         setState({ loading: false, error: null, results: json.results, total: json.total, totalCourses: json.totalCourses });
       } catch (e) {
         if ((e as Error).name !== "AbortError") setState({ loading: false, error: (e as Error).message, results: [], total: 0, totalCourses: null });
@@ -155,8 +137,8 @@ export function CourseSearchView() {
       {state.error && <Alert tone="error" title="Golfplatzdatenbank nicht erreichbar">{state.error}</Alert>}
       {state.totalCourses === 0 && (
         <Alert tone="info" title="Die Golfplatzdatenbank ist noch nicht befüllt">
-          Die Anlagen werden über den Bayern-Importer (Discovery aus der BGV-Clubübersicht) und verifizierte Ratingdaten über den CSV-Import im
-          Admin-Bereich eingepflegt. Es werden keine CR- oder Slope-Werte geschätzt oder erfunden.
+          Anlagen und verifizierte Ratingdaten werden im Admin-Bereich eingepflegt (CSV-Import bzw. Bayern-Importer). Es werden keine CR- oder
+          Slope-Werte geschätzt oder erfunden.
         </Alert>
       )}
       {state.totalCourses !== null && state.totalCourses > 0 && (

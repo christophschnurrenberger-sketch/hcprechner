@@ -1,9 +1,16 @@
 # Abschluss-Check (Spezifikation §79)
 
-Stand: 29.09.2026 · 296 automatisierte Tests (davon 231 für die WHS-Engine), ESLint und TypeScript ohne Befund,
+Stand: 29.09.2026 · 315 automatisierte Tests (davon 231 für die WHS-Engine), ESLint und TypeScript ohne Befund,
 Produktions-Build erfolgreich, Standalone-Server mit PGlite und mit PostgreSQL 16 geprüft, Browser-Tests (Desktop und
 390 px) für Dashboard, Wizard (manuell und Datenbank, 9 Loch, Scorekarte), Rundendetail, Scoring Record, Simulator,
 Einstellungen/Export, Admin (CRUD, CSV-Import), Golfplatzsuche und öffentliche Golfplatzseite.
+
+Webspace-Edition: ZIP-Paket mit `php -S` (PHP 8.4) als simuliertem Webspace geprüft – Installation im Unterordner und
+in der Domain-Wurzel, Update über bestehende Installation, Admin (Anmeldung, Anlage/Platz/Rating, Validierung,
+Speichern auf dem Server), Golfplatzsuche und Anlagen-Seite, Runde mit Platz aus der Datenbank erfassen,
+Synchronisation, 404-Seite, Schutz von `data/`, CSRF-Schutz, Sitemap, Mobilansicht (je 28/28 Prüfungen).
+Nicht geprüft: echter Apache mit `.htaccess` (kein Apache in der Build-Umgebung) – die `.htaccess`-Anweisungen sind
+in `<IfModule>` gekapselt, und `install.php` schaltet bei HTTP 500 automatisch auf eine minimale Fassung um.
 
 | Prüfpunkt | Status | Nachweis |
 |---|---|---|
@@ -63,3 +70,4 @@ bestätigt werden:
 - `Dockerfile` und `docker-compose.yml` (App + PostgreSQL 16) liegen bei; ein Docker-Build war in der Build-Umgebung
   mangels Docker-Daemon nicht möglich. Das Image entspricht dem getesteten Standalone-Aufbau.
 - Für Produktion `ADMIN_PASSWORD` setzen (sonst ist der Admin-Bereich gesperrt).
+- Klassischer PHP-Webspace: `npm run build:webspace` → ZIP hochladen → `install.php` (siehe [`WEBSPACE.md`](WEBSPACE.md)).

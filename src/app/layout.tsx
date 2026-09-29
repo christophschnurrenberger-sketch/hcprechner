@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { HcpStoreProvider } from "@/components/providers/HcpStoreProvider";
+import { InstallGuard } from "@/components/layout/InstallGuard";
+import { IS_WEBSPACE } from "@/lib/runtime";
 
 export const metadata: Metadata = {
   title: {
@@ -24,6 +26,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="de" suppressHydrationWarning>
+      {IS_WEBSPACE && (
+        <head>
+          <InstallGuard />
+        </head>
+      )}
       <body className="antialiased">
         <HcpStoreProvider>
           <AppShell>{children}</AppShell>

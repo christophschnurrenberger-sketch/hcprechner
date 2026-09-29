@@ -83,9 +83,11 @@ function DifferentialPath({ round, result }: { round: Round; result: RoundResult
   );
 }
 
-export function RoundDetail({ id }: { id: string }) {
+/** Detailseite einer Runde; ohne `id`-Prop wird der Query-Parameter `?id=` gelesen. */
+export function RoundDetail({ id: idProp }: { id?: string }) {
   const router = useRouter();
   const params = useSearchParams();
+  const id = idProp ?? params.get("id") ?? "";
   const { ready, settings, deleteRound } = useHcp();
   const { roundsById, resultsById } = useRoundLookup();
   const [confirm, setConfirm] = useState(false);

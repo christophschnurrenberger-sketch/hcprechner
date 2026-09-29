@@ -9,6 +9,7 @@ import { useHcp } from "@/components/providers/HcpStoreProvider";
 import { ButtonLink, Card, CardBody, CardHeader, EmptyState, PageHeader, Select, Stat } from "@/components/ui";
 import { useRoundLookup } from "@/components/handicap/useRoundLookup";
 import { LoadingState } from "@/components/dashboard/DashboardView";
+import { roundPath } from "@/lib/courses/paths";
 
 export function StatisticsView() {
   const { ready, rounds, result } = useHcp();
@@ -60,7 +61,7 @@ export function StatisticsView() {
                   const round = roundsById.get(r.roundId)!;
                   return (
                     <li key={r.roundId}>
-                      <Link href={`/runden/${encodeURIComponent(r.roundId)}`} className="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-surface-2">
+                      <Link href={roundPath(r.roundId)} className="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-surface-2">
                         <span className="tabular w-5 text-xs text-ink-3">{i + 1}.</span>
                         <span className="tabular w-12 font-semibold">{formatDecimal(r.scoreDifferential?.value)}</span>
                         <span className="min-w-0 flex-1 truncate">
@@ -177,7 +178,7 @@ export function StatisticsView() {
                     {selected.bestByTee.map((t) => (
                       <li key={t.tee} className="flex justify-between gap-3">
                         <span className="text-ink-2">{t.tee || "–"}</span>
-                        <Link className="tabular font-semibold hover:underline" href={`/runden/${encodeURIComponent(t.roundId)}`}>
+                        <Link className="tabular font-semibold hover:underline" href={roundPath(t.roundId)}>
                           SD {formatDecimal(t.scoreDifferential)}
                         </Link>
                       </li>

@@ -6,21 +6,38 @@
 src/rules/whs/de/2026/   Regelversion DE/DGV 2026 – Konfiguration + reine Rechenfunktionen
 src/rules/whs/registry   Verfügbare Regelversionen (neue Versionen/Länder hier registrieren)
 src/lib/whs/             Engine: Einzelrunde, chronologischer Scoring Record, Simulation, Statistik, Texte
-src/lib/courses/         Platzdaten-Logik: Rating-Auswahl, Suche, Duplikate, CSV, Qualität, Validierung
+src/lib/courses/         Platzdaten-Logik: Rating-Auswahl, Suche, Duplikate, CSV, Qualität, Validierung,
+                         JSON-Datensatz-Operationen (dataset.ts), Datenzugriff im Browser (client.ts)
 src/lib/importer/        Parser der BGV-Clubübersicht (Discovery)
 src/lib/rounds/          Wizard-Formularzustand → unveränderliche Runde
 src/lib/store/           Local Mode (Browser-Speicher), Import/Export-Schema
+src/lib/sync/            Synchronisation (Payload-Prüfung, Client für Node-API bzw. PHP)
 src/lib/export/          CSV/PDF-Export, Runden-CSV-Import
+src/lib/runtime.ts       Build-Variante (node | webspace), Basispfad
 src/db/                  Drizzle-Schema, Client (PostgreSQL oder PGlite)
 src/server/              Repositories (Platzdaten, Sync), Admin-Schutz
-src/app/                 Next.js-Seiten, API-Routen, Server Actions
-src/components/          UI
-scripts/                 Bayern-Importer, DB-Check
+src/app/                 Next.js-Seiten; *.server.tsx nur Node-Edition, *.static.tsx nur Webspace-Edition
+src/components/          UI (Admin-Formulare/-Ansichten gemeinsam für beide Editionen)
+webspace/php/            install.php, api/*.php, Schutzdateien der Webspace-Edition
+scripts/                 Bayern-Importer, DB-Check, build-webspace.mjs
 tests/                   Vitest
 ```
 
 Die Berechnungslogik hat keine Abhängigkeit zu React oder Next.js. Die UI ruft ausschließlich `calculateScoringRecord`,
 `evaluateRound`, `simulateRound`, `analyzeTarget` usw. auf. Texte zu Codes stehen in `src/lib/whs/messages.ts`.
+
+## Build-Varianten
+
+| | Node-Edition (`npm run build`) | Webspace-Edition (`npm run build:webspace`) |
+|---|---|---|
+| Ausgabe | Next.js-Server (`output: "standalone"`) | statische Dateien (`output: "export"`) + PHP-Skripte, ZIP |
+| Golfplatzdaten | PostgreSQL/PGlite über `src/server/courseRepository.ts` | JSON-Datensatz über `src/lib/courses/dataset.ts` + `api/*.php` |
+| Admin-Schreibschicht | Server Actions (`src/app/admin/actions.ts`) | `WebspaceAdminShell` (Browser) + `api/admin.php` |
+| Seiten mit Parametern | `/golfplaetze/<region>/<slug>`, `/admin/anlagen/<id>` | `/golfplaetze/anlage/?slug=`, `/admin/anlage/?id=` |
+
+Gemeinsam: alle übrigen Seiten, die komplette Engine, Runden (`/runde/?id=`), die Admin-Formulare und -Ansichten
+(`src/components/admin/`, Schreibzugriff über den `AdminBackend`-Kontext), Validierung (Zod-Schemas) und
+Suchlogik (`runCourseSearch`). Die Pfade erzeugt ausschließlich `src/lib/courses/paths.ts`. Details: `docs/WEBSPACE.md`.
 
 ## Regelversionen
 

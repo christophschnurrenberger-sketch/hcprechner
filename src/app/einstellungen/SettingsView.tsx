@@ -12,6 +12,7 @@ import { downloadText } from "@/lib/export/download";
 import { parseDecimal } from "@/lib/courses/csv";
 import { useHcp } from "@/components/providers/HcpStoreProvider";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Dialog, Field, Input, PageHeader, Segmented, Select } from "@/components/ui";
+import { syncCreate, syncDelete, syncPull, syncPush } from "@/lib/sync/client";
 import { LoadingState } from "@/components/dashboard/DashboardView";
 
 function ProfileSection() {
@@ -340,7 +341,7 @@ function SyncSection() {
       setBusy(false);
     }
   };
-  const payload = () => JSON.stringify({ profile: data.profile, rounds: data.rounds });
+  const payload = () => ({ profile: data.profile, rounds: data.rounds });
 
   return (
     <Card>
@@ -357,10 +358,8 @@ function SyncSection() {
               disabled={busy}
               onClick={() =>
                 call(async () => {
-                  const res = await fetch("/api/sync", { method: "POST", headers: { "content-type": "application/json" }, body: payload() });
-                  const json = await res.json();
-                  if (!res.ok) throw new Error(json.error ?? "Fehler");
-                  updateSettings({ sync: { profileId: json.profileId, key: json.key, lastSyncAt: new Date().toISOString() } });
+                  const created = await syncCreate(payload());
+                  updateSettings({ sync: { profileId: created.profileId, key: created.key, lastSyncAt: new Date().toISOString() } });
                   setMessage({ tone: "success", text: "Synchronisation eingerichtet. Notieren Sie Profil-ID und Schlüssel für weitere Geräte." });
                 })
               }
@@ -383,9 +382,7 @@ function SyncSection() {
                 disabled={busy || !connectId || !connectKey}
                 onClick={() =>
                   call(async () => {
-                    const res = await fetch(`/api/sync/${connectId}`, { headers: { authorization: `Bearer ${connectKey}` } });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json.error ?? "Fehler");
+                    const json = await syncPull({ profileId: connectId, key: connectKey });
                     replaceAll({ ...data, profile: json.profile, rounds: json.rounds, settings: { ...data.settings, sync: { profileId: connectId, key: connectKey, lastSyncAt: new Date().toISOString() } } });
                     setMessage({ tone: "success", text: `${json.rounds.length} Runden vom Server geladen.` });
                   })
@@ -411,9 +408,7 @@ function SyncSection() {
                 disabled={busy}
                 onClick={() =>
                   call(async () => {
-                    const res = await fetch(`/api/sync/${sync.profileId}`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${sync.key}` }, body: payload() });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json.error ?? "Fehler");
+                    await syncPush(sync, payload());
                     updateSettings({ sync: { ...sync, lastSyncAt: new Date().toISOString() } });
                     setMessage({ tone: "success", text: "Daten hochgeladen." });
                   })
@@ -426,9 +421,7 @@ function SyncSection() {
                 disabled={busy}
                 onClick={() =>
                   call(async () => {
-                    const res = await fetch(`/api/sync/${sync.profileId}`, { headers: { authorization: `Bearer ${sync.key}` } });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json.error ?? "Fehler");
+                    const json = await syncPull(sync);
                     replaceAll({ ...data, profile: json.profile, rounds: json.rounds, settings: { ...data.settings, sync: { ...sync, lastSyncAt: new Date().toISOString() } } });
                     setMessage({ tone: "success", text: `${json.rounds.length} Runden vom Server geladen (lokale Daten ersetzt).` });
                   })
@@ -445,8 +438,7 @@ function SyncSection() {
                 disabled={busy}
                 onClick={() =>
                   call(async () => {
-                    const res = await fetch(`/api/sync/${sync.profileId}`, { method: "DELETE", headers: { authorization: `Bearer ${sync.key}` } });
-                    if (!res.ok) throw new Error((await res.json()).error ?? "Fehler");
+                    await syncDelete(sync);
                     updateSettings({ sync: null });
                     setMessage({ tone: "info", text: "Serverprofil gelöscht." });
                   })

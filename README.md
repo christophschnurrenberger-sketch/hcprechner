@@ -17,12 +17,24 @@ Zentrale Bewertungsgröße ist das **Score Differential**.
 | Golfplatzdaten | Relationales Modell Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; Suche, öffentliche SEO-Seiten, CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
 | Daten des Spielers | Local Mode (Browser-Speicher, kein Konto), Export CSV/JSON/PDF, Runden-CSV-Import, optionale anonyme Synchronisation |
 
-## Schnellstart
+## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
+
+Für klassischen PHP-Webspace (Strato, IONOS, all-inkl, netcup, …) gibt es die **Webspace-Edition**:
+
+1. `release/golf-hcp-rechner-webspace-<version>.zip` erzeugen (`npm run build:webspace`) oder fertig herunterladen und entpacken.
+2. Den Ordner `golf-hcp-rechner` per FTP hochladen (beliebiger Ordnername, auch die Domain-Wurzel ist möglich – versteckte
+   `.htaccess`-Dateien mit hochladen).
+3. `https://ihre-domain.de/<ordner>/install.php` aufrufen, Admin-Passwort festlegen – fertig.
+
+Voraussetzung: PHP ≥ 7.4 (empfohlen 8.x), Apache. Details, Sicherheit und Unterschiede zur Node-Edition:
+[`docs/WEBSPACE.md`](docs/WEBSPACE.md); Kurzanleitung für den Upload liegt als `LIESMICH.txt` im ZIP.
+
+## Schnellstart (Entwicklung / Node-Edition)
 
 ```bash
 npm install
 npm run dev          # http://localhost:3000 – eingebettetes PostgreSQL (PGlite) in .data/pglite
-npm test             # 296 Tests (231 für die WHS-Engine)
+npm test             # 315 Tests (231 für die WHS-Engine)
 ```
 
 Ohne `DATABASE_URL` läuft die App mit eingebettetem PostgreSQL (PGlite). Für den Produktivbetrieb:
@@ -44,6 +56,7 @@ Alle Variablen: siehe [`.env.example`](.env.example). Migrationen (`drizzle/`) w
 | Befehl | Zweck |
 |---|---|
 | `npm run dev` / `build` / `start` | Entwicklung, Produktions-Build, Start |
+| `npm run build:webspace` | Webspace-Edition bauen und als ZIP packen (`--seed <datensatz.json>` liefert Golfplatzdaten mit) |
 | `npm test` | Vitest (Engine, Platzdaten, Importer, Repository mit PGlite) |
 | `TEST_DATABASE_URL=… npm test` | Repository-Tests gegen echtes PostgreSQL |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
@@ -70,6 +83,7 @@ Aktueller Stand und Einschränkungen: [`docs/DATENSTATUS-BAYERN.md`](docs/DATENS
 ## Dokumentation
 
 - [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md) – Aufbau, Regel-Engine, Datenmodell, Rundungspunkte
+- [`docs/WEBSPACE.md`](docs/WEBSPACE.md) – Webspace-Edition: Installation, Update, Sicherheit, Aufbau
 - [`docs/ABSCHLUSS-CHECK.md`](docs/ABSCHLUSS-CHECK.md) – Checkliste aus der Spezifikation mit Status
 - [`docs/DATENSTATUS-BAYERN.md`](docs/DATENSTATUS-BAYERN.md) – Datenstand Golfplätze
 - In der App: **Rechenregeln & Methodik** (`/methodik`), direkt aus der Regelkonfiguration erzeugt
