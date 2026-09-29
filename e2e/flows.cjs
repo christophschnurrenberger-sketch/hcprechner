@@ -30,8 +30,8 @@ function lastLink(to, pattern) {
   const m = mails().filter((x) => x.to === to && pattern.test(x.text));
   if (!m.length) return null;
   const link = m.at(-1).text.match(/https?:\/\/\S+/)[0];
-  // Adresse aus der Mail → Testserver
-  return link.replace(/^https?:\/\/[^/]+(\/hcp)?/, BASE);
+  // Adresse aus der Mail → Testserver (Mails verwenden die eingestellte Website-Adresse)
+  return link.startsWith(BASE) ? link : link.replace(/^https?:\/\/[^/]+(\/hcp(?=\/))?/, BASE);
 }
 
 const api = {
@@ -75,8 +75,14 @@ async function visible(locator, timeout = 10000) {
     .catch(() => false);
 }
 
+const BASE_PATH = new URL(BASE).pathname.replace(/\/$/, "");
+/** Wartet, bis der Pfad (ohne Installationsordner) samt Query `re` entspricht. */
 async function waitPath(page, re, timeout = 15000) {
-  await page.waitForURL((u) => re.test(new URL(u).pathname + new URL(u).search), { timeout });
+  await page.waitForURL((u) => {
+    const url = new URL(u);
+    const path = BASE_PATH && url.pathname.startsWith(`${BASE_PATH}/`) ? url.pathname.slice(BASE_PATH.length) : url.pathname;
+    return re.test(path + url.search);
+  }, { timeout });
 }
 
 (async () => {
@@ -215,7 +221,7 @@ async function waitPath(page, re, timeout = 15000) {
   await u.click("text=E2E Testclub (fiktiv)");
   await u.waitForSelector("text=ändern");
   await u.click("text=Fertig");
-  await waitPath(u, /^\/(hcp\/)?member\/?$/);
+  await waitPath(u, /^\/member\/?$/);
   await u.waitForSelector("text=Hallo Max!");
   const hero = await u.locator("#hcp-hero-title").locator("xpath=..").innerText();
   check("F: Dashboard zeigt Start-HCPI 18,4 (Initial Handicap)", hero.includes("18,4") && hero.includes("Start-Handicap"), hero.replace(/\s+/g, " ").slice(0, 120));
@@ -374,7 +380,7 @@ async function waitPath(page, re, timeout = 15000) {
   await waitPath(o, /\/member\/welcome/);
   await o.getByRole("button", { name: "Weiter", exact: true }).click();
   await o.click("text=Überspringen");
-  await waitPath(o, /^\/(hcp\/)?member\/?$/);
+  await waitPath(o, /^\/member\/?$/);
   await o.waitForSelector("text=Hallo Erika!");
   const heroO = await o.locator("#hcp-hero-title").locator("xpath=..").innerText();
   check("E: Benutzer ohne Runden und ohne Start-HCPI → 54,0", heroO.includes("54,0"));

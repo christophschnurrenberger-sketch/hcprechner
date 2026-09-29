@@ -26,9 +26,12 @@ Was `install.php` tut:
    E-Mails), E-Mail-Versand (`mail()`, SMTP, Ablage in `data/mail-outbox/` oder aus). `data/users.php` mit dem
    Super-Admin-Konto anlegen (nur Passwort-Hash).
 4. `.htaccess` schreiben (eigener, markierter Block; fremde Einträge bleiben erhalten): Weiterleitung von
-   `/member` und `/admin` an `gate.php`, 404-Seite, MIME-Typen, Sicherheits-Header, Kompression. Liefert der Server
-   danach HTTP 500 (Hoster erlaubt einzelne Anweisungen nicht), stellt die Erfolgsseite automatisch auf eine minimale
-   Fassung um.
+   `/member` und `/admin` an `gate.php`, 404-Seite, MIME-Typen, Sicherheits-Header, Kompression. Die Weiterleitung
+   verwendet den absoluten Pfad (`/<ordner>/gate.php`), damit sie auch bei Hostern ohne passende `RewriteBase`
+   funktioniert (z. B. IONOS), und hängt Verzeichnissen den Schrägstrich selbst an – sonst ergänzt Apache die interne
+   Angabe `?area=…` in der Adresse. Liefert der Server danach HTTP 500 (Hoster erlaubt einzelne Anweisungen nicht),
+   stellt die Erfolgsseite automatisch auf eine minimale Fassung um; antwortet `/member/` mit 404 (Weiterleitung
+   läuft ins Leere), wird nur die Vorprüfung abgeschaltet.
 5. `robots.txt` (bei Installation in der Domain-Wurzel) mit Verweis auf `sitemap.php`; `/member`, `/admin`, `/api`
    und `/data` sind ausgeschlossen.
 6. Veraltete Skripte der Version 1 (`api/account.php`, `api/sync.php`) löschen.

@@ -106,6 +106,10 @@ Probleme?
   automatisch auf eine vereinfachte Fassung um; sonst .htaccess im
   Installationsordner löschen – die Anwendung funktioniert auch ohne (die
   Daten liefert der Server dann trotzdem nur nach Anmeldung aus).
+- „Seite nicht gefunden“ unter /member oder /admin (Version 2.0.0, z. B. bei
+  IONOS): auf 2.0.1 aktualisieren – alle Dateien hochladen und install.php
+  aufrufen; die .htaccess wird dabei neu geschrieben. Zeigt install.php danach
+  einen Hinweis zur Vorprüfung, funktioniert die Anwendung trotzdem.
 - Keine E-Mails: unter Admin → Einstellungen „Testmail senden“; SMTP-Daten
   des Postfachs prüfen (Port 587 mit STARTTLS oder 465 mit SSL). Bis dahin
   Konten im Admin-Bereich mit temporärem Passwort anlegen.

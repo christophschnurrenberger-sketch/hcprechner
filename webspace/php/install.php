@@ -180,18 +180,27 @@ function rewrite_files($files, $base, $root, &$errors)
     return $count;
 }
 
-function htaccess_block($base, $minimal)
+/**
+ * $minimal: nur die Fehlerseite (Hoster erlaubt die übrigen Anweisungen nicht).
+ * $gate: Vorprüfung von /member und /admin über gate.php (false, wenn der Server die Weiterleitung nicht ausführt).
+ */
+function htaccess_block($base, $minimal, $gate = true)
 {
     $lines = array();
     $lines[] = '# BEGIN Golf HCP Rechner';
     $lines[] = '# Von install.php erzeugt – dieser Block wird bei jeder Installation/Aktualisierung neu geschrieben.';
     $lines[] = 'ErrorDocument 404 ' . $base . '/404.html';
     if (!$minimal) {
-        $lines[] = '<IfModule mod_rewrite.c>';
-        $lines[] = '  RewriteEngine On';
-        $lines[] = '  # Mitglieder- und Admin-Bereich nur mit gültiger Anmeldung (Prüfung in gate.php)';
-        $lines[] = '  RewriteRule ^(member|admin)(/.*)?$ gate.php?area=$1 [QSA,L]';
-        $lines[] = '</IfModule>';
+        if ($gate) {
+            $lines[] = '<IfModule mod_rewrite.c>';
+            $lines[] = '  RewriteEngine On';
+            $lines[] = '  # Verzeichnis ohne Schrägstrich selbst umleiten (sonst hängt Apache „?area=…“ an die Adresse)';
+            $lines[] = '  RewriteRule ^(member|admin)(/[^.]*[^/.])?$ %{REQUEST_URI}/ [R=302,L]';
+            $lines[] = '  # Mitglieder- und Admin-Bereich nur mit gültiger Anmeldung (Prüfung in gate.php).';
+            $lines[] = '  # Absoluter Pfad: funktioniert auch bei Hostern, die sonst RewriteBase verlangen (z. B. IONOS).';
+            $lines[] = '  RewriteRule ^(member|admin)(/.*)?$ ' . $base . '/gate.php?area=$1 [QSA,L]';
+            $lines[] = '</IfModule>';
+        }
         $lines[] = '<IfModule mod_dir.c>';
         $lines[] = '  DirectoryIndex index.html index.php';
         $lines[] = '</IfModule>';
@@ -219,12 +228,12 @@ function htaccess_block($base, $minimal)
 }
 
 /** Schreibt den eigenen Block in .htaccess und lässt fremde Einträge unverändert. */
-function write_htaccess($root, $base, $minimal)
+function write_htaccess($root, $base, $minimal, $gate = true)
 {
     $file = $root . '/.htaccess';
     $existing = is_file($file) ? (string)file_get_contents($file) : '';
     $existing = preg_replace('/# BEGIN Golf HCP Rechner.*?# END Golf HCP Rechner\n?/s', '', $existing);
-    return write_file($file, htaccess_block($base, $minimal) . ($existing !== '' ? "\n" . ltrim($existing) : ''));
+    return write_file($file, htaccess_block($base, $minimal, $gate) . ($existing !== '' ? "\n" . ltrim($existing) : ''));
 }
 
 function ensure_data_dir($data)
@@ -326,7 +335,9 @@ if (isset($_GET['fix']) && $_GET['fix'] === 'htaccess' && $_SERVER['REQUEST_METH
         echo json_encode(array('ok' => false));
         exit;
     }
-    echo json_encode(array('ok' => write_htaccess($ROOT, (string)$config['basePath'], true)));
+    // mode=nogate: Server führt die Weiterleitung auf gate.php nicht aus → ohne Vorprüfung, sonst vollständig
+    $nogate = isset($_POST['mode']) && $_POST['mode'] === 'nogate';
+    echo json_encode(array('ok' => write_htaccess($ROOT, (string)$config['basePath'], !$nogate, !$nogate)));
     exit;
 }
 
@@ -613,10 +624,20 @@ header('X-Frame-Options: DENY');
               el.textContent = 'Hinweis: Die .htaccess wurde auf eine vereinfachte Fassung umgestellt (Ihr Hoster erlaubt nicht alle Anweisungen). Der Zugangsschutz der Seiten entfällt – Ihre Daten bleiben durch die API geschützt.';
             });
           }
+          var start = r.ok ? '✓ Startseite erreichbar. ' : 'Startseite antwortet mit HTTP ' + r.status + '. ';
           return fetch(base + 'member/', { cache: 'no-store', redirect: 'manual', credentials: 'omit' }).then(function (m) {
-            var gated = m.type === 'opaqueredirect' || m.status === 302;
-            el.textContent = (r.ok ? '✓ Startseite erreichbar. ' : 'Startseite antwortet mit HTTP ' + r.status + '. ')
-              + (gated ? '✓ Mitgliederbereich nur nach Anmeldung erreichbar.' : 'Hinweis: mod_rewrite ist nicht aktiv – Seiten werden ohne Vorprüfung ausgeliefert, Daten liefert die API aber nur nach Anmeldung.');
+            if (m.type === 'opaqueredirect' || m.status === 302) {
+              el.textContent = start + '✓ Mitgliederbereich nur nach Anmeldung erreichbar.';
+              return;
+            }
+            if (m.status === 404 || m.status >= 500) {
+              // Weiterleitung auf gate.php funktioniert auf diesem Server nicht → ohne Vorprüfung ausliefern
+              var body = new URLSearchParams({ token: <?php echo json_encode($token); ?>, mode: 'nogate' });
+              return fetch('install.php?fix=htaccess', { method: 'POST', body: body }).then(function () {
+                el.textContent = start + 'Hinweis: Ihr Server leitet /member nicht an gate.php weiter (HTTP ' + m.status + '). Die Vorprüfung der Seiten wurde deshalb abgeschaltet – Ihre Daten liefert die API weiterhin nur nach Anmeldung und mit Berechtigung.';
+              });
+            }
+            el.textContent = start + 'Hinweis: mod_rewrite ist nicht aktiv – Seiten werden ohne Vorprüfung ausgeliefert, Daten liefert die API aber nur nach Anmeldung.';
           });
         }).catch(function () { el.textContent = ''; });
       })();

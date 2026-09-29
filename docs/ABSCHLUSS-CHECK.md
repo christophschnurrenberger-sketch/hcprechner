@@ -1,6 +1,6 @@
 # Abschluss-Check
 
-Stand: 29.09.2026 · Version 2.0.0 · **365 automatisierte Tests** (231 WHS-Engine, 46 Rechte/Sicherheit/Service-Schicht
+Stand: 29.09.2026 · Version 2.0.1 · **365 automatisierte Tests** (231 WHS-Engine, 46 Rechte/Sicherheit/Service-Schicht
 inkl. PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
 
 ## Version 2 – Frontend mit Mitgliederbereich und Admin-Backend (Master-Prompt)
@@ -133,6 +133,9 @@ bestätigt werden:
   mangels Docker-Daemon nicht möglich. Das Image entspricht dem getesteten Standalone-Aufbau.
 - Für Produktion `APP_URL`, `SESSION_SECRET`, `ADMIN_EMAIL`/`ADMIN_PASSWORD` (erster Super-Admin) und `SMTP_URL` setzen.
 - Klassischer PHP-Webspace: `npm run build:webspace` → ZIP hochladen → `install.php` (siehe [`WEBSPACE.md`](WEBSPACE.md)).
-- Nicht geprüft: echter Apache mit `.htaccess`/`mod_rewrite` (in der Build-Umgebung simuliert ein PHP-Router die
-  Weiterleitung auf `gate.php`); Docker-Build (kein Docker-Daemon). Die Selbstprüfung in `install.php` zeigt an, ob der
-  Mitgliederbereich auf dem Webspace wirklich vorab geschützt ist.
+- Apache 2.4 mit PHP-FPM (wie bei IONOS: Kundenverzeichnis außerhalb der DocumentRoot, PHP über FastCGI):
+  Neuinstallation, Update 2.0.0 → 2.0.1 über `install.php`, Abläufe A–K 61/61, Selbstprüfung „✓“; zusätzlich ein
+  Server, auf dem die Weiterleitung an `gate.php` ins Leere läuft → `install.php` schaltet die Vorprüfung ab, die
+  Anwendung bleibt nutzbar. In 2.0.0 führte `/member` dort zu `/member/?area=member` und „Seite nicht gefunden“
+  (relative RewriteRule ohne `RewriteBase`, Verzeichnisweiterleitung von `mod_dir`) – behoben in 2.0.1.
+- Nicht geprüft: Docker-Build (kein Docker-Daemon).

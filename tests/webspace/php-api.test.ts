@@ -132,6 +132,10 @@ describe.skipIf(!hasPhp)("Webspace-Backend (PHP)", () => {
     expect(m.status).toBe(302);
     expect(m.location).toContain("/hcp/login/?next=%2Fmember%2F");
     expect((await admin.req("/admin/")).status).toBe(200);
+    // Internes area=… in der Adresse (Apache-Verzeichnisweiterleitung) wird entfernt, andere Parameter bleiben
+    const leaked = await admin.req("/member/?area=member&area=member&x=1");
+    expect(leaked.status).toBe(302);
+    expect(leaked.location).toBe("/hcp/member/?x=1");
     // Pfad-Tricks werden abgewiesen
     expect([403, 404]).toContain((await admin.req("/admin/..%2F..%2Fdata/users.php")).status);
     expect((await admin.req("/admin/..%2Fapi%2F_lib.php")).status).toBe(404);
