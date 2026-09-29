@@ -4,32 +4,46 @@
  *
  * 1. Alle Dateien des ZIP-Archivs per FTP in einen Ordner hochladen (z. B. /hcp oder die Domain-Wurzel).
  * 2. https://ihre-domain.de/<ordner>/install.php im Browser aufrufen.
- * 3. Admin-Passwort festlegen – fertig.
+ * 3. Super-Admin-Konto (Name, E-Mail, Passwort) und E-Mail-Versand festlegen – fertig.
  *
  * Was passiert dabei?
- * - Der Installationsordner wird erkannt und in alle Seiten-/Skriptdateien eingetragen
- *   (Platzhalter /__HCP_BASE__ → z. B. /hcp).
- * - data/config.php mit dem Passwort-Hash wird angelegt (kein Klartext, keine Datenbank nötig).
- * - .htaccess (Fehlerseite, Caching, Sicherheits-Header) und robots.txt werden geschrieben.
+ * - Der Installationsordner wird in alle Seiten-/Skriptdateien eingetragen (Platzhalter /__HCP_BASE__ → z. B. /hcp).
+ * - data/config.php (Schlüssel, Adresse, E-Mail-Versand) und data/users.php (Konten, nur Passwort-Hashes) werden angelegt.
+ * - .htaccess (Zugangsschutz für /member und /admin, Fehlerseite, Sicherheits-Header) und robots.txt werden geschrieben.
  *
- * Update: Neue Version einfach über die alte hochladen (der Ordner data/ bleibt erhalten) und
- * install.php erneut aufrufen – dann genügt das Admin-Passwort.
+ * Update: Neue Version über die alte hochladen (der Ordner data/ bleibt erhalten) und install.php erneut aufrufen.
+ * Bestätigt wird mit einem Super-Admin-Konto. Bei einem Update von Version 1 (Haupt-Passwort) wird dabei das
+ * Super-Admin-Konto angelegt; vorhandene Benutzer werden übernommen (player → USER, editor → ADMIN).
  *
- * Bewusst einfach gehalten: eine Datei, keine Abhängigkeiten, lauffähig ab PHP 7.4.
+ * Notfall-Zugang: Per FTP eine leere Datei data/recovery.txt anlegen, install.php aufrufen und ein neues
+ * Super-Admin-Passwort setzen (die Datei wird danach gelöscht).
  */
 
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 
+if (version_compare(PHP_VERSION, '7.4.0', '<')) {
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><meta charset="utf-8"><title>Installation</title><p style="font-family:sans-serif;padding:2em">Diese Anwendung benötigt PHP 7.4 oder neuer (aktuell: '
+        . htmlspecialchars(PHP_VERSION) . '). Bitte im Kundenmenü des Hosters die PHP-Version auf 8.x umstellen.</p>';
+    exit;
+}
+if (!is_file(__DIR__ . '/api/_lib.php')) {
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><meta charset="utf-8"><title>Installation</title><p style="font-family:sans-serif;padding:2em">Der Ordner <code>api</code> fehlt. Bitte alle Dateien vollständig hochladen.</p>';
+    exit;
+}
+require __DIR__ . '/api/_lib.php';
+
 define('HCP_PLACEHOLDER', '/__HCP_BASE__');
-define('HCP_GUARD', "<?php exit; ?>\n");
-define('HCP_MIN_PHP', '7.4.0');
 
 $ROOT = __DIR__;
 $DATA = $ROOT . '/data';
 $CONFIG_FILE = $DATA . '/config.php';
 $TEXT_EXTENSIONS = array('html', 'htm', 'js', 'mjs', 'css', 'txt', 'json', 'xml', 'webmanifest', 'svg', 'map', 'rsc');
 $SKIP_DIRS = array('data', 'api', '.well-known');
+/** Dateien früherer Versionen, die entfernt werden. */
+$OBSOLETE = array('api/account.php', 'api/sync.php');
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
@@ -40,19 +54,9 @@ function h($s)
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 }
 
-function read_guarded($file)
+function post($key, $max = 500)
 {
-    if (!is_file($file)) {
-        return null;
-    }
-    $c = file_get_contents($file);
-    if ($c === false) {
-        return null;
-    }
-    if (strncmp($c, HCP_GUARD, strlen(HCP_GUARD)) === 0) {
-        $c = substr($c, strlen(HCP_GUARD));
-    }
-    return $c;
+    return isset($_POST[$key]) && is_string($_POST[$key]) ? trim(substr($_POST[$key], 0, $max)) : '';
 }
 
 function write_file($file, $content)
@@ -76,49 +80,31 @@ function write_file($file, $content)
     return true;
 }
 
-function load_config($file)
+function write_guarded_json($file, $data)
 {
-    $raw = read_guarded($file);
-    if ($raw === null) {
-        return null;
-    }
-    $c = json_decode($raw, true);
-    return is_array($c) ? $c : null;
+    return write_file($file, HCP_GUARD . json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 }
 
 function detect_base_path()
 {
     $script = isset($_SERVER['SCRIPT_NAME']) ? (string)$_SERVER['SCRIPT_NAME'] : '/install.php';
-    $dir = str_replace('\\', '/', dirname($script));
-    return normalize_base_path($dir);
+    return normalize_base_path(str_replace('\\', '/', dirname($script)));
 }
 
 /** '' für die Domain-Wurzel, sonst '/ordner' bzw. '/ordner/unterordner' (ohne Schrägstrich am Ende). */
 function normalize_base_path($value)
 {
-    $value = trim((string)$value);
-    $value = '/' . trim($value, "/ \t");
+    $value = '/' . trim(trim((string)$value), "/ \t");
     if ($value === '/') {
         return '';
     }
-    if (!preg_match('#^(/[A-Za-z0-9._~-]+)+$#', $value)) {
-        return false;
-    }
-    return $value;
-}
-
-function is_https()
-{
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
-        return true;
-    }
-    return isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https';
+    return preg_match('#^(/[A-Za-z0-9._~-]+)+$#', $value) ? $value : false;
 }
 
 function site_origin()
 {
     $host = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^A-Za-z0-9.:\-\[\]]/', '', $_SERVER['HTTP_HOST']) : 'localhost';
-    return (is_https() ? 'https' : 'http') . '://' . $host;
+    return (hcp_is_https() ? 'https' : 'http') . '://' . $host;
 }
 
 /** Alle Textdateien der Anwendung (ohne data/, api/ und install.php). */
@@ -128,7 +114,7 @@ function text_files($root, $extensions, $skipDirs)
     $it = new RecursiveIteratorIterator(
         new RecursiveCallbackFilterIterator(
             new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
-            function ($current, $key, $iterator) use ($root, $skipDirs) {
+            function ($current) use ($root, $skipDirs) {
                 if ($current->isDir()) {
                     $rel = ltrim(str_replace('\\', '/', substr($current->getPathname(), strlen($root))), '/');
                     return !in_array($rel, $skipDirs, true);
@@ -138,17 +124,12 @@ function text_files($root, $extensions, $skipDirs)
         )
     );
     foreach ($it as $file) {
-        if (!$file->isFile()) {
+        if (!$file->isFile() || $file->getPathname() === __FILE__) {
             continue;
         }
-        $ext = strtolower(pathinfo($file->getFilename(), PATHINFO_EXTENSION));
-        if (!in_array($ext, $extensions, true)) {
-            continue;
+        if (in_array(strtolower(pathinfo($file->getFilename(), PATHINFO_EXTENSION)), $extensions, true)) {
+            $result[] = $file->getPathname();
         }
-        if ($file->getPathname() === __FILE__) {
-            continue;
-        }
-        $result[] = $file->getPathname();
     }
     return $result;
 }
@@ -167,11 +148,7 @@ function files_with_placeholder($files)
 
 function needs_rewrite($root)
 {
-    $index = $root . '/index.html';
-    if (!is_file($index)) {
-        return false;
-    }
-    $c = file_get_contents($index);
+    $c = is_file($root . '/index.html') ? file_get_contents($root . '/index.html') : false;
     return $c !== false && strpos($c, '__HCP_BASE__') !== false;
 }
 
@@ -187,7 +164,7 @@ function rewrite_files($files, $base, $root, &$errors)
     foreach ($files as $f) {
         $c = file_get_contents($f);
         if ($c === false) {
-            $errors[] = 'Nicht lesbar: ' . $f;
+            $errors[] = 'Nicht lesbar: ' . h($f);
             continue;
         }
         $n = str_replace(array('\\/__HCP_BASE__', HCP_PLACEHOLDER), array($escapedBase, $base), $c);
@@ -195,7 +172,7 @@ function rewrite_files($files, $base, $root, &$errors)
             continue;
         }
         if (@file_put_contents($f, $n, LOCK_EX) === false) {
-            $errors[] = 'Nicht beschreibbar: ' . $f;
+            $errors[] = 'Nicht beschreibbar: ' . h($f);
             continue;
         }
         $count++;
@@ -208,8 +185,13 @@ function htaccess_block($base, $minimal)
     $lines = array();
     $lines[] = '# BEGIN Golf HCP Rechner';
     $lines[] = '# Von install.php erzeugt – dieser Block wird bei jeder Installation/Aktualisierung neu geschrieben.';
-    $lines[] = 'ErrorDocument 404 ' . ($base === '' ? '' : $base) . '/404.html';
+    $lines[] = 'ErrorDocument 404 ' . $base . '/404.html';
     if (!$minimal) {
+        $lines[] = '<IfModule mod_rewrite.c>';
+        $lines[] = '  RewriteEngine On';
+        $lines[] = '  # Mitglieder- und Admin-Bereich nur mit gültiger Anmeldung (Prüfung in gate.php)';
+        $lines[] = '  RewriteRule ^(member|admin)(/.*)?$ gate.php?area=$1 [QSA,L]';
+        $lines[] = '</IfModule>';
         $lines[] = '<IfModule mod_dir.c>';
         $lines[] = '  DirectoryIndex index.html index.php';
         $lines[] = '</IfModule>';
@@ -223,6 +205,7 @@ function htaccess_block($base, $minimal)
         $lines[] = '  Header always set X-Content-Type-Options "nosniff"';
         $lines[] = '  Header always set Referrer-Policy "strict-origin-when-cross-origin"';
         $lines[] = '  Header always set X-Frame-Options "SAMEORIGIN"';
+        $lines[] = '  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"';
         $lines[] = '  <FilesMatch "\\.(html|txt)$">';
         $lines[] = '    Header set Cache-Control "no-cache"';
         $lines[] = '  </FilesMatch>';
@@ -241,17 +224,15 @@ function write_htaccess($root, $base, $minimal)
     $file = $root . '/.htaccess';
     $existing = is_file($file) ? (string)file_get_contents($file) : '';
     $existing = preg_replace('/# BEGIN Golf HCP Rechner.*?# END Golf HCP Rechner\n?/s', '', $existing);
-    $content = htaccess_block($base, $minimal) . ($existing !== '' ? "\n" . ltrim($existing) : '');
-    return write_file($file, $content);
+    return write_file($file, htaccess_block($base, $minimal) . ($existing !== '' ? "\n" . ltrim($existing) : ''));
 }
 
 function ensure_data_dir($data)
 {
     $ok = true;
-    foreach (array('', '/sync', '/backups', '/ratelimit', '/sessions', '/userdata') as $sub) {
-        $dir = $data . $sub;
-        if (!is_dir($dir)) {
-            $ok = @mkdir($dir, 0755, true) && $ok;
+    foreach (array('', '/backups', '/ratelimit', '/userdata', '/audit', '/logs', '/locks') as $sub) {
+        if (!is_dir($data . $sub)) {
+            $ok = @mkdir($data . $sub, 0755, true) && $ok;
         }
     }
     $deny = "# Kein Zugriff über den Browser\n<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order deny,allow\n  Deny from all\n</IfModule>\n";
@@ -264,10 +245,37 @@ function ensure_data_dir($data)
     return $ok;
 }
 
-function app_version($root)
+function install_users()
 {
-    $f = $root . '/version.txt';
-    return is_file($f) ? trim((string)file_get_contents($f)) : '';
+    return hcp_load_users();
+}
+
+function super_admins($users)
+{
+    return array_values(array_filter($users, function ($u) {
+        return $u['role'] === 'SUPER_ADMIN';
+    }));
+}
+
+/** Mail-Einstellungen aus dem Formular. */
+function mail_from_form($existing)
+{
+    $mode = post('mailMode', 10);
+    if (!in_array($mode, array('mail', 'smtp', 'outbox', 'off'), true)) {
+        $mode = 'mail';
+    }
+    $mail = is_array($existing) ? $existing : array();
+    $mail['mode'] = $mode;
+    if ($mode === 'smtp') {
+        $mail['host'] = post('smtpHost', 200);
+        $mail['port'] = max(1, min(65535, (int)post('smtpPort', 6) ?: 587));
+        $mail['secure'] = in_array(post('smtpSecure', 5), array('tls', 'ssl', 'none'), true) ? post('smtpSecure', 5) : 'tls';
+        $mail['user'] = post('smtpUser', 200);
+        if (isset($_POST['smtpPass']) && is_string($_POST['smtpPass']) && $_POST['smtpPass'] !== '') {
+            $mail['pass'] = substr($_POST['smtpPass'], 0, 500);
+        }
+    }
+    return $mail;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,14 +283,12 @@ function app_version($root)
 // ---------------------------------------------------------------------------
 
 $checks = array();
-$phpOk = version_compare(PHP_VERSION, HCP_MIN_PHP, '>=');
-$checks[] = array('PHP-Version ' . PHP_VERSION . ' (mindestens 7.4)', $phpOk);
+$checks[] = array('PHP-Version ' . PHP_VERSION . ' (mindestens 7.4)', true);
 $checks[] = array('PHP-Erweiterung json', function_exists('json_encode'));
-$checks[] = array('PHP-Sessions', function_exists('session_start'));
 $checks[] = array('Sichere Zufallszahlen (random_bytes)', function_exists('random_bytes'));
 $checks[] = array('Passwort-Hashing (password_hash)', function_exists('password_hash'));
 $checks[] = array('Anwendungsdateien vorhanden (index.html, _next/)', is_file($ROOT . '/index.html') && is_dir($ROOT . '/_next'));
-$checks[] = array('PHP-Skripte vorhanden (api/admin.php)', is_file($ROOT . '/api/admin.php'));
+$checks[] = array('PHP-Skripte vorhanden (api/, gate.php)', is_file($ROOT . '/api/auth.php') && is_file($ROOT . '/api/me.php') && is_file($ROOT . '/gate.php'));
 $dataWritable = (is_dir($DATA) && is_writable($DATA)) || (!is_dir($DATA) && is_writable($ROOT));
 $checks[] = array('Ordner data/ beschreibbar', $dataWritable);
 $checks[] = array('Installationsordner beschreibbar (.htaccess)', is_writable($ROOT));
@@ -291,10 +297,13 @@ foreach ($checks as $c) {
     $allChecksOk = $allChecksOk && $c[1];
 }
 
-$config = load_config($CONFIG_FILE);
+$config = hcp_config();
 $installed = $config !== null;
+$users = $installed ? install_users() : array();
+$legacy = $installed && !super_admins($users); // Version 1: Haupt-Passwort statt Super-Admin-Konto
 $rewriteNeeded = needs_rewrite($ROOT);
 $detectedBase = detect_base_path();
+$recovery = $installed && is_file($DATA . '/recovery.txt');
 $errors = array();
 $done = null;
 
@@ -317,13 +326,50 @@ if (isset($_GET['fix']) && $_GET['fix'] === 'htaccess' && $_SERVER['REQUEST_METH
         echo json_encode(array('ok' => false));
         exit;
     }
-    $ok = write_htaccess($ROOT, (string)$config['basePath'], true);
-    echo json_encode(array('ok' => $ok));
+    echo json_encode(array('ok' => write_htaccess($ROOT, (string)$config['basePath'], true)));
     exit;
 }
 
+// Notfall-Zugang (nur solange data/recovery.txt existiert)
+if ($recovery && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['token'], $_POST['recovery'])) {
+    if (!hash_equals($token, (string)$_POST['token'])) {
+        $errors[] = 'Sitzung abgelaufen – bitte die Seite neu laden.';
+    } else {
+        $email = strtolower(post('email', 200));
+        $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
+        if (strlen($password) < HCP_PASSWORD_MIN || $password !== (isset($_POST['password2']) ? (string)$_POST['password2'] : '')) {
+            $errors[] = 'Passwort: mindestens ' . HCP_PASSWORD_MIN . ' Zeichen, beide Eingaben gleich.';
+        }
+        $found = false;
+        foreach ($users as &$u) {
+            if ($u['email'] === $email) {
+                $found = true;
+                if (!$errors) {
+                    $u['passwordHash'] = password_hash($password, PASSWORD_DEFAULT);
+                    $u['passwordChangedAt'] = hcp_now();
+                    $u['role'] = 'SUPER_ADMIN';
+                    $u['status'] = 'ACTIVE';
+                    $u['emailVerified'] = true;
+                    $u['mustChangePassword'] = false;
+                }
+            }
+        }
+        unset($u);
+        if (!$found) {
+            $errors[] = 'Kein Konto mit dieser E-Mail-Adresse.';
+        }
+        if (!$errors) {
+            write_guarded_json(hcp_users_file(), array('schema' => 2, 'users' => array_values($users)));
+            hcp_audit('USER_PASSWORD_RESET', null, array('entityType' => 'user', 'newValue' => array('recovery' => true, 'email' => $email)));
+            @unlink($DATA . '/recovery.txt');
+            $recovery = false;
+            $done = array('recovered' => true, 'base' => (string)$config['basePath'], 'files' => 0, 'update' => true);
+        }
+    }
+}
+
 $wasInstalled = $installed;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['token'])) {
+if (!$done && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['token']) && !isset($_POST['recovery'])) {
     if (!hash_equals($token, (string)$_POST['token'])) {
         $errors[] = 'Sitzung abgelaufen – bitte die Seite neu laden.';
     } elseif (!$allChecksOk) {
@@ -331,30 +377,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['token'])) {
     } else {
         $base = normalize_base_path(isset($_POST['base']) ? $_POST['base'] : $detectedBase);
         $password = isset($_POST['password']) ? (string)$_POST['password'] : '';
+        $email = strtolower(post('email', 200));
+        $firstName = post('firstName', 60);
+        $lastName = post('lastName', 60);
+        $siteUrl = rtrim(post('siteUrl', 300), '/');
+        $newSuper = null;   // anzulegendes Super-Admin-Konto
         if ($base === false) {
             $errors[] = 'Der Installationsordner darf nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich enthalten.';
         }
-        if ($installed) {
-            // Aktualisierung: nur mit dem bestehenden Admin-Passwort
-            if (!password_verify($password, (string)$config['adminPasswordHash'])) {
+        if ($siteUrl !== '' && !preg_match('#^https?://[^\s/]+(/[^\s]*)?$#i', $siteUrl)) {
+            $errors[] = 'Die Adresse der Anwendung ist ungültig (Beispiel: https://www.golfclub.de/hcp).';
+        }
+        if ($installed && !$legacy) {
+            // Aktualisierung: Bestätigung mit einem Super-Admin-Konto
+            $ok = false;
+            foreach (super_admins($users) as $u) {
+                if ($u['email'] === $email && $u['status'] === 'ACTIVE' && password_verify($password, (string)$u['passwordHash'])) {
+                    $ok = true;
+                }
+            }
+            if (!$ok) {
                 usleep(700000);
-                $errors[] = 'Admin-Passwort falsch.';
+                $errors[] = 'E-Mail-Adresse oder Passwort des Super-Admin-Kontos falsch.';
             }
         } else {
-            $repeat = isset($_POST['password2']) ? (string)$_POST['password2'] : '';
-            if (strlen($password) < 8) {
-                $errors[] = 'Das Admin-Passwort muss mindestens 8 Zeichen lang sein.';
-            } elseif ($password !== $repeat) {
-                $errors[] = 'Die Passwörter stimmen nicht überein.';
+            if ($legacy) {
+                // Version 1: altes Haupt-Passwort bestätigt, es wird zum Passwort des Super-Admin-Kontos
+                if (!password_verify($password, (string)($config['adminPasswordHash'] ?? ''))) {
+                    usleep(700000);
+                    $errors[] = 'Admin-Passwort (bisheriges Haupt-Passwort) falsch.';
+                }
+            } else {
+                if (strlen($password) < HCP_PASSWORD_MIN) {
+                    $errors[] = 'Das Passwort muss mindestens ' . HCP_PASSWORD_MIN . ' Zeichen lang sein.';
+                } elseif ($password !== (isset($_POST['password2']) ? (string)$_POST['password2'] : '')) {
+                    $errors[] = 'Die Passwörter stimmen nicht überein.';
+                }
             }
+            if ($firstName === '' || $lastName === '') {
+                $errors[] = 'Bitte Vor- und Nachnamen für das Super-Admin-Konto angeben.';
+            }
+            if (!preg_match(HCP_EMAIL_PATTERN, $email)) {
+                $errors[] = 'Bitte eine gültige E-Mail-Adresse für das Super-Admin-Konto angeben.';
+            }
+            $newSuper = array('email' => $email, 'firstName' => $firstName, 'lastName' => $lastName, 'password' => $password);
         }
         if ($installed && !$rewriteNeeded && $base !== false && $base !== (string)$config['basePath']) {
-            $errors[] = 'Die Anwendung ist bereits für ' . ($config['basePath'] === '' ? 'die Domain-Wurzel' : $config['basePath'])
+            $errors[] = 'Die Anwendung ist bereits für ' . ($config['basePath'] === '' ? 'die Domain-Wurzel' : h($config['basePath']))
                 . ' eingerichtet. Zum Verschieben bitte alle Dateien (außer data/) neu hochladen und install.php erneut aufrufen.';
         }
 
+        $files = array();
         if (!$errors) {
-            // 1. Platzhalter in allen Textdateien ersetzen – vorher Schreibrechte prüfen
             $files = $rewriteNeeded ? files_with_placeholder(text_files($ROOT, $TEXT_EXTENSIONS, $SKIP_DIRS)) : array();
             $notWritable = array();
             foreach ($files as $f) {
@@ -373,23 +447,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['token'])) {
             if (!ensure_data_dir($DATA)) {
                 $errors[] = 'Der Ordner data/ konnte nicht vollständig angelegt werden.';
             }
-            $newConfig = $installed ? $config : array();
-            if (!$installed) {
-                $newConfig['adminPasswordHash'] = password_hash($password, PASSWORD_DEFAULT);
-                $newConfig['installedAt'] = gmdate('Y-m-d\TH:i:s\Z');
+            $newConfig = $installed ? $config : array('installedAt' => hcp_now());
+            if (empty($newConfig['secret'])) {
+                $newConfig['secret'] = bin2hex(random_bytes(32));
             }
             $newConfig['basePath'] = $base;
-            $newConfig['syncEnabled'] = !empty($_POST['sync']);
-            $newConfig['appVersion'] = app_version($ROOT);
-            $newConfig['updatedAt'] = gmdate('Y-m-d\TH:i:s\Z');
-            if (!write_file($CONFIG_FILE, HCP_GUARD . json_encode($newConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES))) {
+            $newConfig['siteUrl'] = $siteUrl !== '' ? $siteUrl : (isset($newConfig['siteUrl']) ? $newConfig['siteUrl'] : site_origin() . $base);
+            if (isset($_POST['mailMode'])) {
+                $newConfig['mail'] = mail_from_form(isset($newConfig['mail']) ? $newConfig['mail'] : array());
+            } elseif (!isset($newConfig['mail'])) {
+                $newConfig['mail'] = array('mode' => 'mail');
+            }
+            unset($newConfig['syncEnabled'], $newConfig['adminPasswordHash']);
+            $newConfig['appVersion'] = hcp_app_version();
+            $newConfig['schema'] = 2;
+            $newConfig['updatedAt'] = hcp_now();
+
+            // Konten: bestehende übernehmen (werden beim Laden auf Version 2 gehoben), Super-Admin anlegen
+            $migrated = array_values($users);
+            if ($newSuper !== null) {
+                $now = hcp_now();
+                $existingIndex = null;
+                foreach ($migrated as $i => $u) {
+                    if ($u['email'] === $newSuper['email']) {
+                        $existingIndex = $i;
+                    }
+                }
+                $account = array(
+                    'firstName' => $newSuper['firstName'],
+                    'lastName' => $newSuper['lastName'],
+                    'email' => $newSuper['email'],
+                    'role' => 'SUPER_ADMIN',
+                    'status' => 'ACTIVE',
+                    'emailVerified' => true,
+                    'emailVerifiedAt' => $now,
+                    'mustChangePassword' => false,
+                    'passwordHash' => password_hash($newSuper['password'], PASSWORD_DEFAULT),
+                    'passwordChangedAt' => $now,
+                    'updatedAt' => $now,
+                );
+                if ($existingIndex !== null) {
+                    $migrated[$existingIndex] = array_merge($migrated[$existingIndex], $account);
+                    $superId = $migrated[$existingIndex]['id'];
+                } else {
+                    $superId = hcp_new_id();
+                    $migrated[] = hcp_normalize_user(array_merge($account, array('id' => $superId, 'username' => null, 'createdAt' => $now)));
+                }
+            }
+            if (!write_guarded_json($CONFIG_FILE, $newConfig)) {
                 $errors[] = 'data/config.php konnte nicht geschrieben werden.';
             }
+            if (!write_guarded_json(hcp_users_file(), array('schema' => 2, 'users' => $migrated))) {
+                $errors[] = 'data/users.php konnte nicht geschrieben werden.';
+            }
+            if ($newSuper !== null && !is_file(hcp_member_file($superId))) {
+                write_guarded_json(hcp_member_file($superId), array('data' => hcp_default_member_doc($superId), 'revision' => 1, 'updatedAt' => hcp_now()));
+            }
+            foreach ($OBSOLETE as $old) {
+                if (is_file($ROOT . '/' . $old)) {
+                    @unlink($ROOT . '/' . $old);
+                }
+            }
             if (!write_htaccess($ROOT, $base, false)) {
-                $errors[] = '.htaccess konnte nicht geschrieben werden (die Anwendung funktioniert trotzdem, nur ohne eigene Fehlerseite).';
+                $errors[] = '.htaccess konnte nicht geschrieben werden (die Anwendung funktioniert trotzdem, nur ohne Weiterleitungen und eigene Fehlerseite).';
             }
             if ($base === '') {
-                $robots = "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nDisallow: /data/\n\nSitemap: " . site_origin() . "/sitemap.php\n";
+                $robots = "User-agent: *\nAllow: /\nDisallow: /member/\nDisallow: /admin/\nDisallow: /api/\nDisallow: /data/\n\nSitemap: " . site_origin() . "/sitemap.php\n";
                 write_file($ROOT . '/robots.txt', $robots);
             }
             $left = $rewriteNeeded ? count(files_with_placeholder(text_files($ROOT, $TEXT_EXTENSIONS, $SKIP_DIRS))) : 0;
@@ -401,21 +524,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['token'])) {
                 $config = $newConfig;
                 $installed = true;
                 $rewriteNeeded = false;
-                $done = array('base' => $base, 'files' => $rewritten, 'update' => $wasInstalled);
+                $done = array('base' => $base, 'files' => $rewritten, 'update' => $wasInstalled, 'migrated' => $legacy, 'users' => count($migrated), 'email' => $newSuper ? $newSuper['email'] : $email);
+                hcp_audit($wasInstalled ? 'RULE_VERSION_CHANGED' : 'SETTINGS_CHANGED', null, array('entityType' => 'installation', 'newValue' => array('version' => hcp_app_version(), 'update' => $wasInstalled, 'migratedFromV1' => $legacy)));
             }
         }
     }
 }
 
-$mode = $done ? 'done' : (!$installed ? 'install' : ($rewriteNeeded ? 'update' : 'installed'));
-$baseForForm = $installed && !$rewriteNeeded ? (string)$config['basePath'] : ($installed ? (string)$config['basePath'] : $detectedBase);
+$mode = $done ? 'done' : ($recovery ? 'recovery' : (!$installed ? 'install' : ($legacy ? 'legacy' : ($rewriteNeeded ? 'update' : 'installed'))));
+$baseForForm = $installed ? (string)$config['basePath'] : (string)$detectedBase;
 if ($installed && $rewriteNeeded && $detectedBase !== false && $detectedBase !== (string)$config['basePath']) {
-    $baseForForm = $detectedBase; // Dateien wurden in einen anderen Ordner hochgeladen
+    $baseForForm = (string)$detectedBase; // Dateien wurden in einen anderen Ordner hochgeladen
 }
-$appUrl = ($mode === 'done' ? $done['base'] : ($installed ? (string)$config['basePath'] : (string)$detectedBase)) . '/';
+$appUrl = ($mode === 'done' ? $done['base'] : $baseForForm) . '/';
+$siteUrlDefault = $installed && !empty($config['siteUrl']) ? (string)$config['siteUrl'] : site_origin() . $baseForForm;
+$mailCfg = $installed && isset($config['mail']) && is_array($config['mail']) ? $config['mail'] : array('mode' => 'mail');
+$showMail = in_array($mode, array('install', 'legacy'), true);
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex');
+header('X-Frame-Options: DENY');
 ?><!doctype html>
 <html lang="de">
 <head>
@@ -424,30 +552,31 @@ header('X-Robots-Tag: noindex');
 <meta name="robots" content="noindex">
 <title>Installation · Golf HCP Rechner</title>
 <style>
-  :root { --bg:#f6f7f5; --surface:#fff; --ink:#1b1f1c; --ink2:#4b534d; --border:#dfe3de; --brand:#1f6f43; --good:#1f7a3f; --bad:#b42318; --warn:#9a6700; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111412; --surface:#1a1e1b; --ink:#eef1ee; --ink2:#a9b2ab; --border:#2c332e; --brand:#5fc28b; --good:#5fc28b; --bad:#ff8a80; --warn:#e3b341; } }
+  :root { --bg:#f5f7f6; --surface:#fff; --ink:#15201a; --ink2:#4b574f; --border:#dde3df; --brand:#17603a; --good:#1f7a3f; --bad:#b42318; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1311; --surface:#171c19; --ink:#eef2ef; --ink2:#a8b3ab; --border:#2a322d; --brand:#5fc28b; --good:#5fc28b; --bad:#ff8a80; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
-  main { max-width:640px; margin:0 auto; padding:32px 16px 64px; }
-  h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:16px; margin:0 0 12px; }
+  main { max-width:660px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:16px; margin:0 0 12px; } h3 { font-size:14px; margin:18px 0 0; }
   .sub { color:var(--ink2); margin:0 0 24px; }
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:16px; }
   ul.checks { list-style:none; padding:0; margin:0; } ul.checks li { display:flex; gap:8px; padding:3px 0; }
   .ok { color:var(--good); font-weight:600; } .no { color:var(--bad); font-weight:600; }
   label { display:block; font-weight:600; margin:14px 0 4px; } .hint { color:var(--ink2); font-size:13px; font-weight:400; }
-  input[type=password], input[type=text] { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
-  .row { display:flex; gap:8px; align-items:center; margin-top:14px; } .row label { margin:0; font-weight:400; }
-  button, .btn { display:inline-block; margin-top:18px; background:var(--brand); color:#fff; border:0; border-radius:8px; padding:10px 18px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; }
+  input[type=password], input[type=text], input[type=email], input[type=url], input[type=number], select { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--bg); color:var(--ink); font:inherit; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; } @media (max-width:520px) { .grid { grid-template-columns:1fr; } }
+  button, .btn { display:inline-block; margin-top:18px; background:var(--brand); color:#fff; border:0; border-radius:10px; padding:11px 18px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; }
   .btn.secondary { background:transparent; color:var(--brand); border:1px solid var(--border); margin-left:8px; }
   .err { border-color:var(--bad); } .err li { color:var(--bad); }
   code { background:var(--bg); padding:1px 5px; border-radius:4px; font-size:13px; }
   .small { font-size:13px; color:var(--ink2); }
+  .smtp { display:none; } .smtp.show { display:block; }
 </style>
 </head>
 <body>
 <main>
   <h1>Golf HCP Rechner – WHS 2026</h1>
-  <p class="sub">Installation auf Ihrem Webspace<?php echo app_version($ROOT) !== '' ? ' · Version ' . h(app_version($ROOT)) : ''; ?></p>
+  <p class="sub">Installation auf Ihrem Webspace<?php echo hcp_app_version() !== '' ? ' · Version ' . h(hcp_app_version()) : ''; ?></p>
 
   <?php if ($errors): ?>
     <div class="card err"><h2>Bitte prüfen</h2><ul><?php foreach ($errors as $e): ?><li><?php echo $e; ?></li><?php endforeach; ?></ul></div>
@@ -455,50 +584,71 @@ header('X-Robots-Tag: noindex');
 
   <?php if ($mode === 'done'): ?>
     <div class="card">
-      <h2 class="ok">✓ <?php echo $done['update'] ? 'Aktualisierung' : 'Installation'; ?> abgeschlossen</h2>
-      <p>Die Anwendung ist unter <code><?php echo h(site_origin() . $appUrl); ?></code> eingerichtet<?php echo $done['files'] ? ' (' . (int)$done['files'] . ' Dateien angepasst)' : ''; ?>.</p>
+      <?php if (!empty($done['recovered'])): ?>
+        <h2 class="ok">✓ Neues Passwort gesetzt</h2>
+        <p>Sie können sich jetzt mit dem Super-Admin-Konto anmelden. Die Datei <code>data/recovery.txt</code> wurde entfernt.</p>
+      <?php else: ?>
+        <h2 class="ok">✓ <?php echo $done['update'] ? 'Aktualisierung' : 'Installation'; ?> abgeschlossen</h2>
+        <p>Die Anwendung ist unter <code><?php echo h(site_origin() . $appUrl); ?></code> eingerichtet<?php echo $done['files'] ? ' (' . (int)$done['files'] . ' Dateien angepasst)' : ''; ?>.</p>
+        <?php if (!empty($done['migrated'])): ?>
+          <p>Umstellung von Version 1: Das Super-Admin-Konto <code><?php echo h($done['email']); ?></code> wurde mit dem bisherigen Haupt-Passwort angelegt; <?php echo (int)$done['users']; ?> Konten wurden übernommen.</p>
+        <?php endif; ?>
+      <?php endif; ?>
       <p id="selftest" class="small">Prüfe die Erreichbarkeit …</p>
-      <a class="btn" href="<?php echo h($appUrl); ?>">Zur Anwendung</a>
-      <a class="btn secondary" href="<?php echo h($appUrl); ?>admin/">Admin-Bereich</a>
+      <a class="btn" href="<?php echo h($appUrl); ?>login/">Zur Anmeldung</a>
+      <a class="btn secondary" href="<?php echo h($appUrl); ?>">Startseite</a>
     </div>
     <div class="card small">
-      <p><strong>Nächste Schritte:</strong> Im Admin-Bereich Golfanlagen anlegen oder verifizierte Ratingdaten per CSV importieren. Ihre Runden speichert jeder Nutzer lokal im eigenen Browser.</p>
-      <p>Diese Datei (<code>install.php</code>) kann bleiben: Sie ist ohne Admin-Passwort wirkungslos und wird für künftige Updates benötigt.</p>
+      <p><strong>Nächste Schritte:</strong> Anmelden → <em>Admin</em> → <em>Einstellungen</em> (Registrierung, Impressum, Datenschutz, E-Mail-Test) → <em>Golfplätze</em> (Startdaten übernehmen oder verifizierte Ratings per CSV importieren).</p>
+      <p>Diese Datei (<code>install.php</code>) kann bleiben: Ohne Super-Admin-Konto ist sie wirkungslos und wird für künftige Updates benötigt.</p>
     </div>
     <script>
       (function () {
         var el = document.getElementById('selftest');
-        fetch(<?php echo json_encode($appUrl); ?>, { cache: 'no-store' }).then(function (r) {
+        var base = <?php echo json_encode($appUrl); ?>;
+        fetch(base, { cache: 'no-store' }).then(function (r) {
           if (r.status === 500) {
-            // Einzelne .htaccess-Anweisungen sind beim Hoster nicht erlaubt → minimale Fassung schreiben
             var body = new URLSearchParams({ token: <?php echo json_encode($token); ?> });
             return fetch('install.php?fix=htaccess', { method: 'POST', body: body }).then(function () {
-              el.textContent = 'Hinweis: Die .htaccess wurde auf eine vereinfachte Fassung umgestellt (Ihr Hoster erlaubt nicht alle Anweisungen).';
+              el.textContent = 'Hinweis: Die .htaccess wurde auf eine vereinfachte Fassung umgestellt (Ihr Hoster erlaubt nicht alle Anweisungen). Der Zugangsschutz der Seiten entfällt – Ihre Daten bleiben durch die API geschützt.';
             });
           }
-          el.textContent = r.ok ? '✓ Startseite erreichbar.' : 'Startseite antwortet mit HTTP ' + r.status + '.';
+          return fetch(base + 'member/', { cache: 'no-store', redirect: 'manual', credentials: 'omit' }).then(function (m) {
+            var gated = m.type === 'opaqueredirect' || m.status === 302;
+            el.textContent = (r.ok ? '✓ Startseite erreichbar. ' : 'Startseite antwortet mit HTTP ' + r.status + '. ')
+              + (gated ? '✓ Mitgliederbereich nur nach Anmeldung erreichbar.' : 'Hinweis: mod_rewrite ist nicht aktiv – Seiten werden ohne Vorprüfung ausgeliefert, Daten liefert die API aber nur nach Anmeldung.');
+          });
         }).catch(function () { el.textContent = ''; });
       })();
     </script>
 
+  <?php elseif ($mode === 'recovery'): ?>
+    <div class="card">
+      <h2>Notfall-Zugang</h2>
+      <p class="small">Die Datei <code>data/recovery.txt</code> ist vorhanden. Legen Sie ein neues Passwort für ein bestehendes Konto fest – es erhält die Rolle Super-Admin.</p>
+      <form method="post">
+        <input type="hidden" name="token" value="<?php echo h($token); ?>">
+        <input type="hidden" name="recovery" value="1">
+        <label for="email">E-Mail-Adresse des Kontos</label>
+        <input type="email" id="email" name="email" required autocomplete="username">
+        <label for="password">Neues Passwort <span class="hint">– mindestens <?php echo HCP_PASSWORD_MIN; ?> Zeichen</span></label>
+        <input type="password" id="password" name="password" required minlength="<?php echo HCP_PASSWORD_MIN; ?>" autocomplete="new-password">
+        <label for="password2">Passwort wiederholen</label>
+        <input type="password" id="password2" name="password2" required autocomplete="new-password">
+        <button type="submit">Passwort setzen</button>
+      </form>
+    </div>
+
   <?php elseif ($mode === 'installed'): ?>
     <div class="card">
       <h2 class="ok">✓ Bereits installiert</h2>
-      <p>Die Anwendung ist unter <code><?php echo h(site_origin() . $appUrl); ?></code> eingerichtet.</p>
-      <a class="btn" href="<?php echo h($appUrl); ?>">Zur Anwendung</a>
-      <a class="btn secondary" href="<?php echo h($appUrl); ?>admin/">Admin-Bereich</a>
+      <p>Die Anwendung ist unter <code><?php echo h(site_origin() . $appUrl); ?></code> eingerichtet. Einstellungen (Registrierung, E-Mail-Versand, Impressum, Datenschutz) ändern Sie im Admin-Bereich.</p>
+      <a class="btn" href="<?php echo h($appUrl); ?>login/">Zur Anmeldung</a>
+      <a class="btn secondary" href="<?php echo h($appUrl); ?>">Startseite</a>
     </div>
-    <div class="card">
-      <h2>Einstellungen ändern</h2>
-      <form method="post">
-        <input type="hidden" name="token" value="<?php echo h($token); ?>">
-        <input type="hidden" name="base" value="<?php echo h($baseForForm); ?>">
-        <div class="row"><input type="checkbox" id="sync" name="sync" value="1" <?php echo !empty($config['syncEnabled']) ? 'checked' : ''; ?>><label for="sync">Optionale Synchronisation zwischen Geräten erlauben</label></div>
-        <label for="password">Admin-Passwort <span class="hint">zur Bestätigung</span></label>
-        <input type="password" id="password" name="password" autocomplete="current-password" required>
-        <button type="submit">Speichern</button>
-      </form>
-      <p class="small">Update auf eine neue Version: alle Dateien des neuen ZIP-Archivs hochladen (der Ordner <code>data/</code> bleibt erhalten) und diese Seite erneut aufrufen.</p>
+    <div class="card small">
+      <p>Update auf eine neue Version: alle Dateien des neuen ZIP-Archivs hochladen (der Ordner <code>data/</code> bleibt erhalten) und diese Seite erneut aufrufen.</p>
+      <p>Passwort vergessen und kein E-Mail-Versand? Per FTP eine leere Datei <code>data/recovery.txt</code> anlegen und diese Seite neu laden.</p>
     </div>
 
   <?php else: ?>
@@ -510,42 +660,82 @@ header('X-Robots-Tag: noindex');
         <?php endforeach; ?>
       </ul>
       <?php if (!$allChecksOk): ?>
-        <p class="small">Fehlt eine Voraussetzung, hilft meist: PHP-Version im Kundenmenü des Hosters auf 8.x stellen, alle Dateien vollständig hochladen (inkl. <code>_next</code> und <code>api</code>) und Schreibrechte setzen (Ordner 755, Dateien 644).</p>
+        <p class="small">Fehlt eine Voraussetzung, hilft meist: alle Dateien vollständig hochladen (inkl. <code>_next</code> und <code>api</code>) und Schreibrechte setzen (Ordner 755, Dateien 644).</p>
       <?php endif; ?>
     </div>
 
     <div class="card">
-      <h2><?php echo $mode === 'update' ? 'Aktualisierung abschließen' : 'Einrichten'; ?></h2>
+      <h2><?php echo $mode === 'update' ? 'Aktualisierung abschließen' : ($mode === 'legacy' ? 'Umstellung auf Version 2' : 'Einrichten'); ?></h2>
       <?php if ($mode === 'update'): ?>
-        <p class="small">Neue Dateien wurden hochgeladen. Bestätigen Sie mit dem Admin-Passwort, um die Aktualisierung abzuschließen. Golfplatzdaten und Einstellungen bleiben erhalten.</p>
+        <p class="small">Neue Dateien wurden hochgeladen. Bestätigen Sie mit Ihrem Super-Admin-Konto. Konten, Runden, Golfplatzdaten und Einstellungen bleiben erhalten.</p>
+      <?php elseif ($mode === 'legacy'): ?>
+        <p class="small">Version 2 ersetzt das Haupt-Passwort durch persönliche Konten mit Rollen. Geben Sie das bisherige Haupt-Passwort ein und legen Sie Ihr Super-Admin-Konto an (es erhält dieses Passwort). Vorhandene Benutzer und ihre Runden werden übernommen.</p>
       <?php endif; ?>
       <form method="post">
         <input type="hidden" name="token" value="<?php echo h($token); ?>">
         <label for="base">Installationsordner <span class="hint">– automatisch erkannt</span></label>
         <input type="text" id="base" name="base" value="<?php echo h($baseForForm === '' ? '/' : $baseForForm); ?>">
-        <p class="small">Adresse der Anwendung: <code><?php echo h(site_origin()); ?><span id="basePreview"><?php echo h($baseForForm); ?></span>/</code></p>
-        <?php if ($mode === 'install'): ?>
-          <label for="password">Admin-Passwort <span class="hint">– mindestens 8 Zeichen, für die Pflege der Golfplatzdaten</span></label>
-          <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
-          <label for="password2">Passwort wiederholen</label>
-          <input type="password" id="password2" name="password2" autocomplete="new-password" minlength="8" required>
+        <label for="siteUrl">Adresse der Anwendung <span class="hint">– für Links in E-Mails</span></label>
+        <input type="url" id="siteUrl" name="siteUrl" value="<?php echo h($siteUrlDefault); ?>">
+
+        <?php if ($mode === 'update'): ?>
+          <h3>Super-Admin-Konto</h3>
+          <label for="email">E-Mail-Adresse</label>
+          <input type="email" id="email" name="email" required autocomplete="username">
+          <label for="password">Passwort</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password">
         <?php else: ?>
-          <label for="password">Admin-Passwort</label>
-          <input type="password" id="password" name="password" autocomplete="current-password" required>
+          <h3>Super-Admin-Konto</h3>
+          <div class="grid">
+            <div><label for="firstName">Vorname</label><input type="text" id="firstName" name="firstName" required autocomplete="given-name"></div>
+            <div><label for="lastName">Nachname</label><input type="text" id="lastName" name="lastName" required autocomplete="family-name"></div>
+          </div>
+          <label for="email">E-Mail-Adresse <span class="hint">– zugleich Ihr Anmeldename</span></label>
+          <input type="email" id="email" name="email" required autocomplete="username">
+          <?php if ($mode === 'legacy'): ?>
+            <label for="password">Bisheriges Haupt-Passwort</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password">
+          <?php else: ?>
+            <div class="grid">
+              <div><label for="password">Passwort <span class="hint">– mind. <?php echo HCP_PASSWORD_MIN; ?> Zeichen</span></label><input type="password" id="password" name="password" required minlength="<?php echo HCP_PASSWORD_MIN; ?>" autocomplete="new-password"></div>
+              <div><label for="password2">Passwort wiederholen</label><input type="password" id="password2" name="password2" required minlength="<?php echo HCP_PASSWORD_MIN; ?>" autocomplete="new-password"></div>
+            </div>
+          <?php endif; ?>
         <?php endif; ?>
-        <div class="row"><input type="checkbox" id="sync" name="sync" value="1" <?php echo (!$installed || !empty($config['syncEnabled'])) ? 'checked' : ''; ?>><label for="sync">Optionale Synchronisation zwischen Geräten erlauben <span class="hint">(anonymes Profil mit geheimem Schlüssel)</span></label></div>
-        <button type="submit" <?php echo $allChecksOk ? '' : 'disabled'; ?>><?php echo $mode === 'update' ? 'Aktualisierung abschließen' : 'Installieren'; ?></button>
+
+        <?php if ($showMail): ?>
+          <h3>E-Mail-Versand <span class="hint">– für Bestätigung der Registrierung und „Passwort vergessen“</span></h3>
+          <label for="mailMode">Versandart</label>
+          <select id="mailMode" name="mailMode">
+            <option value="mail" <?php echo ($mailCfg['mode'] ?? 'mail') === 'mail' ? 'selected' : ''; ?>>PHP mail() des Webspace (Standard)</option>
+            <option value="smtp" <?php echo ($mailCfg['mode'] ?? '') === 'smtp' ? 'selected' : ''; ?>>SMTP-Postfach (empfohlen, z. B. noreply@ihre-domain.de)</option>
+            <option value="off" <?php echo ($mailCfg['mode'] ?? '') === 'off' ? 'selected' : ''; ?>>kein Versand (Bestätigung durch Admin)</option>
+          </select>
+          <div class="smtp" id="smtpFields">
+            <div class="grid">
+              <div><label for="smtpHost">SMTP-Server</label><input type="text" id="smtpHost" name="smtpHost" value="<?php echo h($mailCfg['host'] ?? ''); ?>" placeholder="smtp.ihr-hoster.de"></div>
+              <div><label for="smtpPort">Port</label><input type="number" id="smtpPort" name="smtpPort" value="<?php echo h($mailCfg['port'] ?? 587); ?>"></div>
+              <div><label for="smtpSecure">Verschlüsselung</label><select id="smtpSecure" name="smtpSecure"><option value="tls">STARTTLS (587)</option><option value="ssl">SSL/TLS (465)</option><option value="none">keine</option></select></div>
+              <div><label for="smtpUser">Benutzer</label><input type="text" id="smtpUser" name="smtpUser" value="<?php echo h($mailCfg['user'] ?? ''); ?>" autocomplete="off"></div>
+            </div>
+            <label for="smtpPass">SMTP-Passwort</label>
+            <input type="password" id="smtpPass" name="smtpPass" autocomplete="new-password">
+          </div>
+        <?php endif; ?>
+        <button type="submit" <?php echo $allChecksOk ? '' : 'disabled'; ?>><?php echo $mode === 'update' ? 'Aktualisierung abschließen' : ($mode === 'legacy' ? 'Umstellen' : 'Installieren'); ?></button>
       </form>
     </div>
     <script>
       (function () {
-        var input = document.getElementById('base'), out = document.getElementById('basePreview');
-        if (!input || !out) return;
-        input.addEventListener('input', function () { var v = '/' + input.value.replace(/^\/+|\/+$/g, ''); out.textContent = v === '/' ? '' : v; });
+        var sel = document.getElementById('mailMode'), box = document.getElementById('smtpFields');
+        if (sel && box) {
+          var sync = function () { box.className = 'smtp' + (sel.value === 'smtp' ? ' show' : ''); };
+          sel.addEventListener('change', sync); sync();
+        }
       })();
     </script>
   <?php endif; ?>
-  <p class="small">Keine Datenbank nötig · Daten liegen im Ordner <code>data/</code> (vor Browserzugriff geschützt) · Runden der Nutzer bleiben in deren Browser.</p>
+  <p class="small">Keine Datenbank nötig · Daten liegen im Ordner <code>data/</code> (vor Browserzugriff geschützt) · Passwörter nur als Hash gespeichert.</p>
 </main>
 </body>
 </html>

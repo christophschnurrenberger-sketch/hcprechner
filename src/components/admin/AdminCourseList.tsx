@@ -31,7 +31,7 @@ export function AdminCourseList({ rows }: { rows: AdminCourseRow[] }) {
         title="Anlagen"
         description={`${courses.length} von ${rows.length} Einträgen`}
         actions={
-          <ButtonLink href="/admin/anlagen/neu" size="sm">
+          <ButtonLink href="/admin/courses/new" size="sm">
             <Plus className="h-4 w-4" /> Anlage anlegen
           </ButtonLink>
         }

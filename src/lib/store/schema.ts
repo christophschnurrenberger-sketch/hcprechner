@@ -66,6 +66,21 @@ export const roundSchema = z.object({
   notes: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Mitgliederbereich: gelöschte Runden bleiben erhalten (Soft Delete) und zählen nicht. */
+  status: z.enum(["COMPLETED", "DELETED"]).optional(),
+  deletedAt: z.string().nullable().optional(),
+  /** Ergebnis zum Zeitpunkt der Speicherung (für Listen im Admin-Bereich; maßgeblich ist die Neuberechnung). */
+  computed: z
+    .object({
+      scoreDifferential: z.number().nullable(),
+      adjustedGrossScore: z.number().nullable(),
+      handicapIndexBefore: z.number(),
+      handicapIndexAfter: z.number(),
+      engine: z.string(),
+      computedAt: z.string(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export const profileSchema = z.object({

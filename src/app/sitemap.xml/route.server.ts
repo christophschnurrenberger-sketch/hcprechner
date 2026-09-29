@@ -5,7 +5,7 @@ import { BAVARIAN_REGIONS } from "@/lib/courses/regions";
 export const dynamic = "force-dynamic";
 
 function base(): string {
-  return (process.env.PUBLIC_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  return (process.env.APP_URL ?? process.env.PUBLIC_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
 const escapeXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

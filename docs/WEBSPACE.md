@@ -9,10 +9,12 @@ ohne Datenbank, ohne Kommandozeile. Hochladen, `install.php` aufrufen, fertig.
 |---|---|
 | 1 | ZIP entpacken → Ordner `golf-hcp-rechner/` |
 | 2 | Per FTP hochladen: den Ordner (→ `https://domain.de/golf-hcp-rechner/`, darf umbenannt werden) **oder** seinen Inhalt in die Domain-Wurzel. Versteckte `.htaccess`-Dateien mit hochladen. |
-| 3 | `…/install.php` im Browser öffnen, Admin-Passwort (≥ 8 Zeichen) festlegen, „Installieren“ |
+| 3 | `…/install.php` im Browser öffnen, Super-Admin-Konto (Name, E-Mail, Passwort ≥ 8 Zeichen), Website-Adresse und E-Mail-Versand festlegen, „Installieren“ |
 
 Voraussetzungen: PHP ≥ 7.4 (empfohlen 8.x) mit `json`, `session`, `random_bytes`, `password_hash` (Standard);
-Apache (für `.htaccess`; ohne `.htaccess` funktioniert die Anwendung ebenfalls, nur ohne eigene 404-Seite und Cache-Header).
+Apache mit `mod_rewrite` (Standard bei deutschen Hostern) für die Vorprüfung von `/member` und `/admin` durch `gate.php`.
+Ohne `.htaccess`/`mod_rewrite` funktioniert die Anwendung ebenfalls – die Seiten werden dann ohne Vorprüfung
+ausgeliefert, Daten liefert die API trotzdem nur nach Anmeldung und mit Berechtigung.
 `install.php` prüft alle Voraussetzungen und zeigt fehlende rot an.
 
 Was `install.php` tut:
@@ -20,11 +22,17 @@ Was `install.php` tut:
 1. Installationsordner aus der eigenen URL ermitteln (änderbar), z. B. `/hcp` oder `""` für die Domain-Wurzel.
 2. Den beim Build eingesetzten Platzhalter `/__HCP_BASE__` in allen Seiten-, Skript- und Stildateien durch den Ordner
    ersetzen (vorher Schreibrechte aller Dateien prüfen; `index.html` zuletzt, sie dient als Kennzeichen „fertig“).
-3. `data/config.php` anlegen: Passwort-Hash (`password_hash`), Basispfad, Synchronisation an/aus.
-4. `.htaccess` schreiben (eigener, markierter Block; fremde Einträge bleiben erhalten): 404-Seite, MIME-Typen,
-   Sicherheits-Header, Kompression. Liefert der Server danach HTTP 500 (Hoster erlaubt einzelne Anweisungen nicht),
-   stellt die Erfolgsseite automatisch auf eine minimale Fassung um.
-5. Bei Installation in der Domain-Wurzel: `robots.txt` mit Verweis auf `sitemap.php`.
+3. `data/config.php` anlegen: zufälliger Schlüssel für Sitzungen/CSRF, Basispfad, Website-Adresse (für Links in
+   E-Mails), E-Mail-Versand (`mail()`, SMTP, Ablage in `data/mail-outbox/` oder aus). `data/users.php` mit dem
+   Super-Admin-Konto anlegen (nur Passwort-Hash).
+4. `.htaccess` schreiben (eigener, markierter Block; fremde Einträge bleiben erhalten): Weiterleitung von
+   `/member` und `/admin` an `gate.php`, 404-Seite, MIME-Typen, Sicherheits-Header, Kompression. Liefert der Server
+   danach HTTP 500 (Hoster erlaubt einzelne Anweisungen nicht), stellt die Erfolgsseite automatisch auf eine minimale
+   Fassung um.
+5. `robots.txt` (bei Installation in der Domain-Wurzel) mit Verweis auf `sitemap.php`; `/member`, `/admin`, `/api`
+   und `/data` sind ausgeschlossen.
+6. Veraltete Skripte der Version 1 (`api/account.php`, `api/sync.php`) löschen.
+7. Selbsttest auf der Erfolgsseite: Ist der Mitgliederbereich ohne Anmeldung gesperrt?
 
 Solange die Installation nicht abgeschlossen ist, leitet jede Seite automatisch zu `install.php` weiter.
 
@@ -32,31 +40,43 @@ Solange die Installation nicht abgeschlossen ist, leitet jede Seite automatisch 
 
 Neue ZIP-Datei über die alte hochladen (der Ordner `data/` wird nicht überschrieben – er enthält im ZIP nur
 Schutzdateien) und `install.php` erneut aufrufen. Da die neuen Dateien wieder den Platzhalter enthalten, erkennt
-`install.php` die Aktualisierung und verlangt nur das bestehende Admin-Passwort.
+`install.php` die Aktualisierung und verlangt die Anmeldung mit einem Super-Admin-Konto.
+
+**Von Version 1:** `install.php` fragt einmalig das bisherige Admin-Passwort ab und legt damit das Super-Admin-Konto an
+(E-Mail frei wählbar, Passwort = bisheriges Admin-Passwort). Vorhandene Benutzer werden übernommen: Spieler → `USER`,
+Golfplatzpflege → `ADMIN`; Runden bleiben erhalten. Benutzer ohne E-Mail-Adresse melden sich weiter mit ihrem
+Benutzernamen an.
+
+**Passwort vergessen, kein Mailversand:** per FTP eine leere Datei `data/recovery.txt` anlegen und `install.php`
+aufrufen. Dort lässt sich für ein bestehendes Konto ein neues Passwort setzen (es erhält die Rolle Super-Admin); die
+Datei wird danach gelöscht und der Vorgang im Audit-Log vermerkt.
 
 ## Aufbau
 
 ```
 golf-hcp-rechner/
-├── index.html, runden/, golfplaetze/, admin/, …   statischer Next.js-Export (alle Seiten)
+├── index.html, login/, member/, admin/, golfplaetze/, …   statischer Next.js-Export (alle Seiten)
 ├── _next/static/                                 JS/CSS (mit .htaccess für dauerhaftes Caching)
 ├── golfplaetze-daten.json                        Startdaten der Golfplatzdatenbank (aus data/seed/, z. B. Ottobeuren)
-├── install.php                                   Installation / Update
+├── install.php                                   Installation / Update / Umstellung von Version 1 / Notfall-Zugang
+├── gate.php                                      Vorprüfung von /member und /admin (Sitzung, Berechtigung)
 ├── sitemap.php                                   Sitemap inkl. Golfanlagen
 ├── api/
-│   ├── _lib.php                                  gemeinsame Funktionen
-│   ├── courses.php                               veröffentlichter Golfplatz-Datensatz (lesen)
-│   ├── admin.php                                 Admin-Anmeldung (Haupt-Passwort oder Co-Admin), Datensatz, Benutzerverwaltung
-│   ├── account.php                               Benutzerkonten: Anmeldung, Passwort, Runden laden/speichern
-│   └── sync.php                                  optionale anonyme Synchronisation
+│   ├── _lib.php                                  gemeinsame Funktionen: Sitzung, Rechte-Matrix, Speicher, Audit, Mail
+│   ├── auth.php                                  Anmeldung, Registrierung, E-Mail bestätigen, Passwort, Profil, Export, Konto löschen
+│   ├── me.php                                    eigene Daten des Mitglieds: laden, Runden, Entwürfe, Einstellungen, Import
+│   ├── admin.php                                 Admin: Benutzer, Runden, Audit-Log, System, Einstellungen, Suche, Golfplatz-Datensatz
+│   └── courses.php                               veröffentlichter Golfplatz-Datensatz (lesen)
 └── data/                                         Serverdaten (per .htaccess gesperrt, Dateien zusätzlich PHP-geschützt)
-    ├── config.php                                Passwort-Hash, Basispfad, Optionen
-    ├── courses.php                               veröffentlichter Golfplatz-Datensatz
-    ├── users.php                                 Benutzerkonten (Passwort-Hashes, Rolle, Status)
-    ├── userdata/<id>.php                         Profil, Runden und Einstellungen je Benutzer (mit Revision)
-    ├── backups/                                  die letzten 10 Fassungen des Datensatzes
-    ├── sync/                                     Sync-Profile (nur Hash des Schlüssels)
-    ├── ratelimit/, sessions/                     Schutz vor Passwort-Raten, PHP-Sitzungen
+    ├── config.php                                Schlüssel, Basispfad, Website-Adresse, Mailversand
+    ├── settings.php                              Einstellungen aus dem Admin-Bereich (Registrierung, Impressum, …)
+    ├── users.php                                 Konten (Passwort-Hashes, Rolle, Status, Token-Hashes)
+    ├── userdata/<id>.php                         Profil, Runden, Entwürfe und Einstellungen je Mitglied (mit Revision)
+    ├── courses.php, backups/                     Golfplatz-Datensatz, die letzten 10 Fassungen
+    ├── audit/<JJJJ-MM>.php                       Audit-Log
+    ├── logs/                                     Fehler- und Mailprotokoll
+    ├── mail-outbox/                              E-Mails im Modus „Ablage“ (Test ohne Mailserver)
+    └── ratelimit/                                Schutz vor Passwort-Raten
 ```
 
 ### Build
@@ -74,31 +94,32 @@ golf-hcp-rechner/
 
 | Thema | Node-Edition | Webspace-Edition |
 |---|---|---|
-| Handicap-Engine, Runden, Statistik, Simulator, Export | identisch (läuft im Browser) | identisch |
+| Oberfläche | identisch (gleiche Seiten, gleicher API-Adapter `src/lib/api`) | identisch |
+| Anmeldung, Rechte, Datentrennung, Audit | Route Handler + PostgreSQL | `api/*.php` + Dateien in `data/` – gleiche Rechte-Matrix, gleiche Fehlercodes |
+| HCP-Berechnung | auf dem Server (Route Handler) | im Browser mit derselben Service-Schicht `src/lib/member`, gekapselt im Adapter `webspace.ts`; PHP prüft und speichert |
+| Seitenschutz | `proxy.server.ts` + Server-Layouts | `gate.php` über `.htaccess` |
 | Golfplatzdaten | PostgreSQL/PGlite, relationale Tabellen | ein JSON-Datensatz (`data/courses.php`), gleiche Struktur wie die DTOs |
-| Golfplatzsuche | `/api/courses` (Server) | im Browser, gleiche Funktion `runCourseSearch` |
-| Anlagen-Seiten | serverseitig gerendert: `/golfplaetze/<region>/<slug>` | `/golfplaetze/anlage/?slug=…`, Regionen über `/golfplaetze/?region=…` |
-| Admin | Server Actions, Passwort per Umgebungsvariable | gleiche Formulare/Ansichten; Änderungen werden im Browser mit denselben Regeln (`src/lib/courses/dataset.ts`, gleiche Zod-Schemas) angewendet und sofort über `api/admin.php` gespeichert |
-| Gleichzeitige Admin-Änderungen | Datenbank-Transaktionen | Revisionsnummer: veralteter Stand wird mit HTTP 409 abgelehnt |
+| Golfplatz-Admin | Server Actions | gleiche Formulare; Änderungen werden im Browser mit denselben Regeln (`src/lib/courses/dataset.ts`) angewendet und über `admin.php?action=courses-save` gespeichert; der Server setzt den Bearbeiter und protokolliert |
+| Gleichzeitige Änderungen | Transaktionen mit Zeilensperre | Revisionsnummer: veralteter Stand → HTTP 409, der Adapter lädt neu und wiederholt |
+| Detailseiten | `/admin/courses/<id>`, `/golfplaetze/<region>/<slug>` | `/admin/courses/view?id=`, `/golfplaetze/anlage/?slug=` |
 | Bayern-Importer (Discovery) | `npm run import:bavaria` | nicht auf dem Webspace; Ergebnis als CSV importieren oder JSON-Export der Node-Edition einspielen |
-| Synchronisation | `/api/sync` (REST) | `api/sync.php` (nur POST, Schlüssel im Header `X-Sync-Key`, da viele Hoster PUT/DELETE bzw. `Authorization` blockieren) |
 
-Die Admin-Formulare, Listen, Qualitäts- und Duplikatansichten sind gemeinsamer Code (`src/components/admin/`);
-nur die Schreibschicht (`AdminBackend`) unterscheidet sich.
+Warum rechnet der Browser? PHP kann die TypeScript-Engine nicht ausführen, und eine zweite Implementierung der WHS-Regeln
+in PHP wäre eine Fehlerquelle. Der Adapter rechnet deshalb mit genau dem Code, den die Node-Edition auf dem Server
+nutzt; die UI sieht in beiden Editionen dieselben DTOs. Sicherheitsrelevant bleibt alles auf dem Server: PHP liefert
+nur das eigene Dokument aus (Benutzer-ID aus der Sitzung), prüft jede gespeicherte Runde auf Struktur und
+Wertebereiche, lehnt veraltete Revisionen ab und protokolliert Änderungen.
 
-## Benutzerkonten
+## Konten und Rollen
 
-Im Admin-Bereich unter **Benutzer** (nur mit dem Haupt-Passwort aus der Installation) werden Zugänge angelegt. Das
-Startpasswort wird im Browser erzeugt, einmalig angezeigt und muss bei der ersten Anmeldung geändert werden.
-
-- Spieler melden sich unter `/anmelden/` an; ihre Daten liegen danach in `data/userdata/<id>.php` und werden bei
-  jeder Änderung automatisch gespeichert (Revisionsprüfung; bei gleichzeitiger Änderung auf zwei Geräten werden die
-  Runden zusammengeführt). Beim Abmelden werden die Kontodaten aus dem Browser entfernt.
-- Rolle „Spieler + Golfplatzpflege“: Anmeldung im Admin-Bereich mit Benutzername und Passwort; Golfplatzdaten
-  bearbeiten ja, Benutzerverwaltung, Admin-Passwort und „Datensatz einspielen“ nein.
-- Anmeldung über ein signiertes HttpOnly-Cookie (30 Tage, SameSite=Lax, Secure bei HTTPS) mit an den Passwortstand
-  gebundenem CSRF-Token. Passwort ändern oder zurücksetzen meldet alle Geräte ab; gesperrte Konten verlieren den Zugang
-  sofort. Fehlversuche werden je IP begrenzt.
+- Registrierung unter `/register/` (im Admin-Bereich abschaltbar) mit Bestätigungslink per E-Mail (48 Stunden
+  gültig); selbst registrierte Konten erhalten immer die Rolle `USER`. Der Admin kann Konten auch direkt anlegen –
+  mit Einladungsmail oder temporärem Passwort (Pflicht zum Wechsel bei der ersten Anmeldung).
+- Passwort vergessen: Link per E-Mail (1 Stunde gültig, einmalig). Die Antwort ist für bekannte und unbekannte
+  Adressen gleich.
+- Rollen `USER`, `SUPPORT`, `ADMIN`, `SUPER_ADMIN` (siehe `docs/ARCHITEKTUR.md`). Deaktivierte oder gesperrte Konten
+  können sich nicht anmelden, laufende Sitzungen enden sofort; die Daten bleiben erhalten.
+- Benutzeransicht („Impersonation“) ist nur lesend, deutlich markiert und wird im Audit-Log vermerkt.
 
 ## Mitgelieferte Golfplatzdaten
 
@@ -109,22 +130,49 @@ Anlagen bleiben unverändert).
 
 ## Sicherheit
 
-- Admin-Passwort nur als `password_hash` gespeichert; Anmeldung über PHP-Session (HttpOnly, SameSite=Strict,
-  Secure bei HTTPS, 12 h gleitend), zusätzlich CSRF-Token im Header `X-CSRF-Token` bei jeder Änderung.
-- Fehlversuche werden je IP begrenzt (10 pro 15 Minuten).
+- Passwörter nur als `password_hash`; nichts im Klartext, nichts im Log.
+- Sitzung: signiertes HttpOnly-Cookie `hcp_session` (14 Tage gleitend, SameSite=Lax, Secure bei HTTPS), gebunden an
+  den Passwortstand. Jede Änderung braucht zusätzlich den CSRF-Token im Header `X-CSRF-Token`; der Browser hält ihn nur
+  im Arbeitsspeicher, nie im Web Storage.
+- Rechte: jede Aktion in `admin.php` hat eine feste Berechtigung aus der Rechte-Matrix; `me.php` kennt nur die
+  Benutzer-ID der Sitzung. Der letzte Super-Admin ist gegen Herabstufen, Deaktivieren und Löschen geschützt.
+- Ratenbegrenzung: Anmeldung 10 Versuche je IP und 8 je Konto in 15 Minuten; Registrierung, Bestätigungs- und
+  Reset-Mails je IP und Adresse begrenzt.
+- Audit-Log (`data/audit/`): Rollen- und Statusänderungen, Passwort-Resets, Benutzeransicht, Anlegen/Löschen von
+  Konten, Runden (angelegt/geändert/gelöscht/importiert), Golfplatzänderungen, Einstellungen – jeweils mit Zeitpunkt,
+  Admin, betroffenem Benutzer, Entität, altem und neuem Wert.
+- SMTP-Passwort und Sitzungsschlüssel verlassen den Server nicht (die Einstellungsseite zeigt nur „gesetzt“).
 - Alle Dateien in `data/` beginnen mit `<?php exit; ?>` – selbst wenn der Server `.htaccess` ignoriert, liefert ein
   direkter Aufruf keinen Inhalt.
-- Schreiben atomar (temporäre Datei + Umbenennen) und mit Dateisperre; vor jedem Speichern eine Sicherung.
-- `install.php` ist nach der Installation ohne Admin-Passwort wirkungslos und kann für künftige Updates liegen bleiben.
-  **Direkt nach dem Hochladen installieren** – vor der Installation könnte sonst jemand anderes das Passwort festlegen.
-- Passwort vergessen: `data/config.php` per FTP löschen und `install.php` erneut aufrufen (Daten bleiben erhalten).
+- Schreiben atomar (temporäre Datei + Umbenennen) und mit Dateisperre; vor jedem Speichern des Golfplatz-Datensatzes
+  eine Sicherung.
+- `install.php` ist nach der Installation ohne Super-Admin-Anmeldung wirkungslos und kann für künftige Updates liegen
+  bleiben. **Direkt nach dem Hochladen installieren** – vor der Installation könnte sonst jemand anderes das
+  Super-Admin-Konto anlegen.
+
+## E-Mail-Versand
+
+Registrierung und „Passwort vergessen“ brauchen einen funktionierenden Mailversand. In `install.php` bzw. unter
+**Admin → Einstellungen** wählbar:
+
+| Modus | Wann |
+|---|---|
+| SMTP (empfohlen) | Postfach des Hosters: Server, Port 587 (STARTTLS) oder 465 (SSL), Benutzer, Passwort, Absender |
+| PHP `mail()` | funktioniert bei vielen Hostern ohne Einrichtung, landet aber öfter im Spam |
+| Ablage | Mails werden nur in `data/mail-outbox/` gespeichert (Test) |
+| Aus | kein Versand; Konten dann nur durch den Admin mit temporärem Passwort anlegen |
+
+„Testmail senden“ unter Einstellungen prüft die Konfiguration. Die Links in Mails verwenden die Website-Adresse aus
+den Einstellungen, nie den Host-Header der Anfrage.
 
 ## Grenzen
 
-- Auf Webspaces ohne PHP (reines Static Hosting) funktionieren Rechner, Runden und Statistik trotzdem; Golfplatzdaten
-  werden dann schreibgeschützt aus `golfplaetze-daten.json` gelesen, Admin und Synchronisation stehen nicht zur Verfügung.
+- PHP ist Pflicht: Anmeldung, Mitgliederdaten und Admin laufen über `api/*.php`. Ohne PHP bleiben nur die
+  öffentlichen Seiten (Golfplätze aus `golfplaetze-daten.json`, Methodik, Hilfe).
 - nginx ohne `.htaccess`: funktioniert; `data/` sollte dann per Serverkonfiguration gesperrt werden (die Dateien sind
   zusätzlich PHP-geschützt).
-- Die Golfplatzdatenbank wird leer ausgeliefert, solange keine verifizierten Daten vorliegen (siehe
+- Mitgeliefert wird nur, was in `data/seed/` liegt (derzeit Ottobeuren, Ratings unverifiziert – siehe
   [`DATENSTATUS-BAYERN.md`](DATENSTATUS-BAYERN.md)); mit `npm run build:webspace -- --seed <export.json>` lässt sich
   ein geprüfter Datensatz mitliefern.
+- Sehr viele gleichzeitige Nutzer: Die Dateispeicherung ist für Vereinsgröße (einige hundert Mitglieder) ausgelegt;
+  darüber die Node-Edition mit PostgreSQL verwenden.

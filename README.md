@@ -8,15 +8,21 @@ Zentrale Bewertungsgröße ist das **Score Differential**.
 
 ## Funktionsumfang
 
+Drei getrennte Bereiche mit eigener Navigation und eigenem Layout:
+
 | Bereich | Inhalt |
 |---|---|
-| Berechnung | Score Differential, 9-Loch-Methode (gespielt + erwartet, DGV-PCC-Tabelle), Course Handicap 9/18, Netto-Doppelbogey/GBE, WHS-Tabelle (3–20 Ergebnisse), ESR rückwirkend (original/adjusted SD), Low HCPI (365 Tage aus HCPI-Historie), Soft/Hard Cap, 26,5-Bremse, Tageslogik, abgebrochene Runden 10–17, Stableford, Ergebnisarten (NA, TA, NRa/NRo, DQa/DQo, Penalty) |
-| Chronologie | Vollständige Rekonstruktion: jede Runde mit dem HCPI zu Beginn ihres Spieltags; alle Runden eines Tages mit demselben Start-HCPI |
-| Transparenz | Rechenweg je Runde (GBE-Tabelle, Formeln mit Zahlen, HCPI-Kette Tabelle → Durchschnitt → Low HCPI → Soft/Hard Cap → Bremse), Debug-Objekt |
-| Oberfläche | Dashboard, Runde erfassen (Wizard, mobile Scorekarte Loch für Loch), Meine Runden, Scoring Record, Golfplätze, HCP-Simulator (Was-wäre-wenn, Ziel-HCPI), GBE-Rechner, Statistiken inkl. Platzanalyse, Einstellungen, Admin, Methodik |
-| Golfplatzdaten | Relationales Modell Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; Suche, öffentliche SEO-Seiten, CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
-| Daten des Spielers | Local Mode (Browser-Speicher, kein Konto), Export CSV/JSON/PDF, Runden-CSV-Import, optionale anonyme Synchronisation |
-| Benutzerkonten | Admin legt Zugänge an (Startpasswort, Pflicht zum Wechsel); angemeldete Spieler speichern Profil und Runden auf dem Server und nutzen sie auf jedem Gerät; Rolle „Golfplatzpflege“ für Co-Admins; sperren, Passwort zurücksetzen, löschen |
+| Öffentlich (`/`) | Startseite, Anmelden, Registrieren, Passwort vergessen/zurücksetzen, E-Mail bestätigen, Golfplätze Bayern (SEO-Seiten), Rechenregeln & Methodik, Hilfe/FAQ, Datenschutz, Impressum |
+| Mitglieder (`/member`) | Startseite mit großem HCPI und Veränderung, HCP-Verlauf und Rechenweg, **„+ Runde erfassen“** (Assistent: Platz → Abschlag → Ergebnis als GBE oder Loch für Loch; nur hinterlegte Abschläge; Hinweis zur 9-Loch-Methode), Ergebnisseite „HCPI vorher → nachher“, Runden mit Detail und Rechenweg-Akkordeon, Bearbeiten und Löschen (Papierkorb), Entwürfe mit automatischem Speichern, Golfplätze mit Favoriten, Heimatplatz und zuletzt gespielt, Onboarding (Start-HCPI, Heimatplatz), Profil (Konto, Sicherheit, Datenschutz mit Export und Kontolöschung), CSV-Import, Werkzeuge (Simulator, GBE-Rechner). Mobil: untere Navigation mit höchstens fünf Einträgen |
+| Admin (`/admin`) | Eigenes Layout mit Seitenleiste und kompakten Tabellen: Dashboard, Benutzer (Filter, Detail, HCP-Ansicht, protokollierte Benutzeransicht), Runden, Golfplätze, Ratings, Quellen, Datenqualität, Duplikate, Import, Änderungen, Regelwerk, System, Audit-Log, Berechtigungen, Einstellungen (inkl. Mailversand), globale Suche |
+| Berechnung | Score Differential, 9-Loch-Methode (gespielt + erwartet, DGV-PCC-Tabelle), Course Handicap 9/18, Netto-Doppelbogey/GBE, WHS-Tabelle (3–20 Ergebnisse), ESR rückwirkend, Low HCPI, Soft/Hard Cap, 26,5-Bremse, Tageslogik, abgebrochene Runden 10–17, Stableford, Ergebnisarten |
+| Golfplatzdaten | Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
+
+**Rollen:** `USER` (Mitglied), `SUPPORT` (Admin-Bereich nur lesend), `ADMIN` (Benutzer und Golfplätze verwalten),
+`SUPER_ADMIN` (zusätzlich Rollen, endgültiges Löschen, Einstellungen). Die Rolle kommt ausschließlich aus der
+Sitzung des Backends; jede Admin-Aktion wird serverseitig geprüft, Mitglieder bekommen nur ihre eigenen Daten
+ausgeliefert. Kritische Aktionen (Rollen, Status, Passwort-Reset, Benutzeransicht, Runden- und Platzänderungen) landen
+im Audit-Log mit Zeitpunkt, Admin, betroffenem Benutzer, altem und neuem Wert.
 
 ## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
 
@@ -25,7 +31,8 @@ Für klassischen PHP-Webspace (Strato, IONOS, all-inkl, netcup, …) gibt es die
 1. `release/golf-hcp-rechner-webspace-<version>.zip` erzeugen (`npm run build:webspace`) oder fertig herunterladen und entpacken.
 2. Den Ordner `golf-hcp-rechner` per FTP hochladen (beliebiger Ordnername, auch die Domain-Wurzel ist möglich – versteckte
    `.htaccess`-Dateien mit hochladen).
-3. `https://ihre-domain.de/<ordner>/install.php` aufrufen, Admin-Passwort festlegen – fertig.
+3. `https://ihre-domain.de/<ordner>/install.php` aufrufen, Super-Admin-Konto (E-Mail + Passwort) und Mailversand
+   festlegen – fertig. Bestehende Installationen der Version 1 werden dort mit dem bisherigen Admin-Passwort umgestellt.
 
 Voraussetzung: PHP ≥ 7.4 (empfohlen 8.x), Apache. Details, Sicherheit und Unterschiede zur Node-Edition:
 [`docs/WEBSPACE.md`](docs/WEBSPACE.md); Kurzanleitung für den Upload liegt als `LIESMICH.txt` im ZIP.
@@ -35,18 +42,23 @@ Voraussetzung: PHP ≥ 7.4 (empfohlen 8.x), Apache. Details, Sicherheit und Unte
 ```bash
 npm install
 npm run dev          # http://localhost:3000 – eingebettetes PostgreSQL (PGlite) in .data/pglite
-npm test             # 331 Tests (231 für die WHS-Engine)
+npm test             # Vitest: Engine, Service-Schicht, Rechte, PHP-API
 ```
 
-Ohne `DATABASE_URL` läuft die App mit eingebettetem PostgreSQL (PGlite). Für den Produktivbetrieb:
+Ohne `DATABASE_URL` läuft die App mit eingebettetem PostgreSQL (PGlite). Den ersten Super-Admin legt
+`ADMIN_EMAIL`/`ADMIN_PASSWORD` beim Start an (oder `npm run user:create-admin -- --email … --password …`).
+Für den Produktivbetrieb:
 
 ```bash
-DATABASE_URL=postgres://user:pass@host:5432/db ADMIN_PASSWORD=… npm run build && npm start
+DATABASE_URL=postgres://… APP_URL=https://hcp.example.de SESSION_SECRET=… ADMIN_EMAIL=… ADMIN_PASSWORD=… \
+  SMTP_URL=smtp://user:pass@mail.example.de:587 npm run build && npm start
 # oder
-ADMIN_PASSWORD=… docker compose up --build
+docker compose up --build   # Variablen in .env
 ```
 
-Alle Variablen: siehe [`.env.example`](.env.example). Migrationen (`drizzle/`) werden beim ersten Datenbankzugriff automatisch angewendet.
+Alle Variablen: siehe [`.env.example`](.env.example). Migrationen (`drizzle/`) werden beim ersten Datenbankzugriff
+automatisch angewendet – auch die Übernahme der Benutzer aus Version 1 (`0002_members_v2.sql`: Spieler → `USER`,
+Golfplatzpflege → `ADMIN`).
 
 ### Supabase
 
@@ -58,7 +70,9 @@ Alle Variablen: siehe [`.env.example`](.env.example). Migrationen (`drizzle/`) w
 |---|---|
 | `npm run dev` / `build` / `start` | Entwicklung, Produktions-Build, Start |
 | `npm run build:webspace` | Webspace-Edition bauen und als ZIP packen (Startdaten aus `data/seed/`; `--seed <datei>` bzw. `--no-seed`) |
-| `npm test` | Vitest (Engine, Platzdaten, Importer, Repository mit PGlite) |
+| `npm test` | Vitest (Engine, Platzdaten, Importer, Repository mit PGlite, Service-Schicht, Rechte, PHP-API mit `php -S`) |
+| `npm run test:e2e` | Browser-Abläufe A–K (Playwright) gegen eine laufende Instanz, siehe `e2e/flows.cjs` |
+| `npm run user:create-admin` | Super-Admin anlegen bzw. Passwort setzen (Node-Edition) |
 | `TEST_DATABASE_URL=… npm test` | Repository-Tests gegen echtes PostgreSQL |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
 | `npm run db:generate` | neue SQL-Migration aus `src/db/schema.ts` erzeugen |
@@ -84,26 +98,31 @@ Mitgelieferte Startdaten: [`data/seed/golfplaetze-bayern.json`](data/seed/golfpl
 Golf- und Landclub Ottobeuren, Ratings noch nicht verifiziert). Aktueller Stand und Einschränkungen:
 [`docs/DATENSTATUS-BAYERN.md`](docs/DATENSTATUS-BAYERN.md).
 
-## Benutzerkonten
+## Konten, Anmeldung und Sicherheit
 
-Im Admin-Bereich unter **Benutzer** (nur mit dem Haupt-Passwort) legt der Betreiber Zugänge an: Name, Benutzername,
-Startpasswort (wird erzeugt und einmalig angezeigt) und Rolle.
+- **Registrieren** (abschaltbar) mit E-Mail-Bestätigung; der Admin kann Konten auch direkt anlegen (Einladung per
+  E-Mail oder temporäres Passwort mit Pflicht zum Wechsel). Selbst registrierte Konten erhalten immer die Rolle `USER`.
+- **Sitzung:** signiertes HttpOnly-Cookie (`SameSite=Lax`, `Secure` bei HTTPS, 14 Tage gleitend); kein Token in
+  `localStorage`/`sessionStorage`. Änderungen brauchen zusätzlich den CSRF-Token (Header `X-CSRF-Token`, nur im
+  Arbeitsspeicher). Passwortwechsel meldet alle Geräte ab.
+- **Passwörter:** nur als Hash (Node: scrypt, PHP: `password_hash`), nie im Log. Anmeldung, Registrierung,
+  „Passwort vergessen“ und Bestätigungslinks sind je IP und Konto begrenzt; unbekannte Konten erhalten dieselbe
+  Antwort wie bekannte.
+- **Deaktivierte/gesperrte Konten** können sich nicht anmelden, laufende Sitzungen enden sofort; die Daten bleiben
+  erhalten. Nur ein Super-Admin löscht endgültig; der letzte Super-Admin ist geschützt.
+- **Seitenschutz:** `/member` und `/admin` werden vor der Auslieferung geprüft (Node: `src/proxy.server.ts` und
+  Server-Layouts; Webspace: `gate.php` über `.htaccess`) – der Browser bekommt Admin-Seiten ohne Berechtigung gar nicht.
+- **Mail:** Node über `SMTP_URL` (oder `MAIL_MODE=outbox|log|off`), Webspace über PHP `mail()` oder SMTP (Einstellungen
+  im Admin-Bereich bzw. in `install.php`). Links in Mails basieren auf `APP_URL` bzw. der Website-Adresse aus den
+  Einstellungen – nie auf dem Host-Header.
 
-- **Spieler** melden sich unter **Anmelden** an und müssen zuerst ein eigenes Passwort festlegen. Profil, Runden und
-  Einstellungen werden danach automatisch im Konto gespeichert (verzögert, mit Revisionsprüfung; Änderungen von zwei
-  Geräten werden zusammengeführt) und stehen auf jedem Gerät zur Verfügung. Ohne Anmeldung bleibt alles wie bisher im
-  Browser (Local Mode); vorhandene Browser-Runden lassen sich unter **Mein Konto** ins Konto übernehmen.
-- **Spieler + Golfplatzpflege** dürfen sich zusätzlich im Admin-Bereich mit Benutzername und Passwort anmelden und die
-  Golfplatzdaten bearbeiten – ohne Zugriff auf die Benutzerverwaltung.
-- Sperren, Passwort zurücksetzen (meldet den Benutzer auf allen Geräten ab) und Löschen (inkl. gespeicherter Runden).
-
-Node-Edition: Tabellen `app_users`/`app_user_data` (Migration `drizzle/0001_user_accounts.sql`), Passwörter mit scrypt,
-signiertes HttpOnly-Cookie (`USER_SESSION_SECRET`). Webspace-Edition: `api/account.php`, Daten in `data/users.php` und
-`data/userdata/` (siehe [`docs/WEBSPACE.md`](docs/WEBSPACE.md)).
+API beider Editionen: [`docs/openapi.yaml`](docs/openapi.yaml). Das Frontend spricht nur über den Adapter
+`src/lib/api` mit dem Backend.
 
 ## Dokumentation
 
-- [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md) – Aufbau, Regel-Engine, Datenmodell, Rundungspunkte
+- [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md) – Aufbau, Bereiche, API-Adapter, Rechte, Regel-Engine, Datenmodell, Rundungspunkte
+- [`docs/openapi.yaml`](docs/openapi.yaml) – API (Auth, Mitglied, Admin)
 - [`docs/WEBSPACE.md`](docs/WEBSPACE.md) – Webspace-Edition: Installation, Update, Sicherheit, Aufbau
 - [`docs/ABSCHLUSS-CHECK.md`](docs/ABSCHLUSS-CHECK.md) – Checkliste aus der Spezifikation mit Status
 - [`docs/DATENSTATUS-BAYERN.md`](docs/DATENSTATUS-BAYERN.md) – Datenstand Golfplätze
@@ -112,4 +131,4 @@ signiertes HttpOnly-Cookie (`USER_SESSION_SECRET`). Webspace-Edition: `api/accou
 ## Technik
 
 Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS 4 · Drizzle ORM · PostgreSQL/Supabase bzw. PGlite ·
-Recharts · Lucide · Zod · Vitest · jsPDF.
+Recharts · Lucide · Zod · Vitest · Playwright · jsPDF · nodemailer · Inter.

@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import "@fontsource-variable/inter";
 import "./globals.css";
-import { AppShell } from "@/components/layout/AppShell";
-import { HcpStoreProvider } from "@/components/providers/HcpStoreProvider";
-import { AccountProvider } from "@/components/providers/AccountProvider";
 import { InstallGuard } from "@/components/layout/InstallGuard";
+import { SessionProvider } from "@/components/session/SessionProvider";
+import { ToastProvider } from "@/components/ui/feedback";
 import { IS_WEBSPACE } from "@/lib/runtime";
 
 export const metadata: Metadata = {
@@ -13,11 +13,14 @@ export const metadata: Metadata = {
     template: "%s · Golf HCP Rechner",
   },
   description:
-    "Handicap-Index-Rechner nach World Handicap System und DGV-Regeln 2026: Score Differentials, 9-Loch-Berechnung, 26,5-Bremse, Soft/Hard Cap, Golfplatzdatenbank Bayern.",
+    "Dein Handicap Index nach World Handicap System und DGV-Regeln 2026: Runden erfassen, Score Differentials, 9-Loch-Berechnung, Golfplatzdatenbank Bayern.",
   applicationName: "Golf HCP Rechner – WHS 2026",
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#151816" },
@@ -33,11 +36,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </head>
       )}
       <body className="antialiased">
-        <AccountProvider>
-          <HcpStoreProvider>
-            <AppShell>{children}</AppShell>
-          </HcpStoreProvider>
-        </AccountProvider>
+        <SessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   );

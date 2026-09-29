@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ExternalLink, MapPin } from "lucide-react";
 import { regionPath } from "@/lib/courses/paths";
 import { regionByKey } from "@/lib/courses/regions";
@@ -8,7 +9,6 @@ import { SOURCE_TYPE_LABELS } from "@/lib/whs/messages";
 import { cn, formatDate, formatDecimal } from "@/lib/format";
 import { todayIso } from "@/lib/whs/dates";
 import { Alert, Badge, Card, CardBody, CardHeader } from "@/components/ui";
-import { MyCourseStats } from "./MyCourseStats";
 
 function ratingLabel(s: RatingSetDto) {
   return `${s.holes}${s.nine ? (s.nine === "FRONT" ? " (Front Nine)" : " (Back Nine)") : ""}`;
@@ -72,19 +72,24 @@ function RatingTable({ sets }: { sets: RatingSetDto[] }) {
 }
 
 /** Detailansicht einer Anlage (Plätze, Abschläge, Ratings mit Quelle) – Node-SEO-Seite und Webspace-Seite. */
-export function CourseDetailView({ course }: { course: CourseDto }) {
+export function CourseDetailView({ course, actions, basePath = "/golfplaetze" }: { course: CourseDto; actions?: ReactNode; basePath?: string }) {
   const today = todayIso();
   const regionLabel = regionByKey(course.region)?.label;
   return (
     <div className="space-y-5">
       <nav className="text-sm text-ink-3">
-        <Link href="/golfplaetze" className="hover:text-ink">
+        <Link href={basePath} className="hover:text-ink">
           Golfplätze
-        </Link>{" "}
-        /{" "}
-        <Link href={regionPath(course.region)} className="hover:text-ink">
-          {regionLabel ?? "Bayern"}
         </Link>
+        {basePath === "/golfplaetze" && (
+          <>
+            {" "}
+            /{" "}
+            <Link href={regionPath(course.region)} className="hover:text-ink">
+              {regionLabel ?? "Bayern"}
+            </Link>
+          </>
+        )}
       </nav>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{course.name}</h1>
@@ -105,6 +110,7 @@ export function CourseDetailView({ course }: { course: CourseDto }) {
             </a>
           )}
         </p>
+        {actions && <div className="mt-4 flex flex-wrap gap-2">{actions}</div>}
       </div>
 
       {course.facilityType === "DRIVING_RANGE" && <Alert tone="info">Übungsanlage / Driving Range – kein handicap-relevanter Golfplatz.</Alert>}
@@ -174,7 +180,6 @@ export function CourseDetailView({ course }: { course: CourseDto }) {
           );
         })}
 
-      <MyCourseStats courseId={course.id} courseName={course.name} />
 
       <p className="text-xs text-ink-3">
         Stammdaten zuletzt geprüft: {formatDate(course.lastVerifiedAt)}. Ratingwerte stammen ausschließlich aus dokumentierten Quellen; fehlende Werte

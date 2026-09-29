@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { WebspaceAdminShell } from "@/components/admin/webspace/WebspaceAdminShell";
+import { AdminShell } from "@/components/layout/AdminShell";
 
-export const metadata: Metadata = { title: "Admin", robots: { index: false } };
+export const metadata: Metadata = { title: { default: "Admin", template: "%s · Admin · Golf HCP Rechner" }, robots: { index: false } };
 
-/** Webspace-Edition: Anmeldung und Speichern über api/admin.php. */
+/** Webspace-Edition: gate.php liefert den Admin-Bereich nur mit Berechtigung aus; api/admin.php prüft jede Aktion. */
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  return <WebspaceAdminShell>{children}</WebspaceAdminShell>;
+  return <AdminShell>{children}</AdminShell>;
 }

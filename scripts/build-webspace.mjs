@@ -86,7 +86,7 @@ writeFileSync(join(STAGE, "version.txt"), `${version}\n`);
 writeFileSync(join(STAGE, "LIESMICH.txt"), readFileSync(join(ROOT, "webspace", "LIESMICH.txt"), "utf8").replace("{{VERSION}}", version));
 
 // 5. Kontrolle: keine Server-Artefakte, PHP-Dateien vollständig -------------
-for (const required of ["install.php", "api/_lib.php", "api/admin.php", "api/courses.php", "api/sync.php", "data/.htaccess", "404.html"]) {
+for (const required of ["install.php", "gate.php", "api/_lib.php", "api/auth.php", "api/me.php", "api/admin.php", "api/courses.php", "data/.htaccess", "404.html", "login/index.html", "member/index.html", "admin/index.html"]) {
   if (!existsSync(join(STAGE, required))) fail(`${required} fehlt im Paket`);
 }
 

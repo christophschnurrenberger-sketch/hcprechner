@@ -19,11 +19,10 @@ export function regionPath(regionKey: string | null): string {
 
 /** Bearbeitungsseite einer Anlage im Admin-Bereich. */
 export function adminCoursePath(id: string): string {
-  return IS_WEBSPACE ? `/admin/anlage?id=${encodeURIComponent(id)}` : `/admin/anlagen/${id}`;
+  return IS_WEBSPACE ? `/admin/courses/view?id=${encodeURIComponent(id)}` : `/admin/courses/${id}`;
 }
 
-/** Detailseite einer Runde (Runden liegen im Browser – daher Query-Parameter statt Pfadsegment). */
-export function roundPath(id: string, extra: Record<string, string> = {}): string {
-  const qs = new URLSearchParams({ id, ...extra }).toString();
-  return `/runde?${qs}`;
+/** Detailseite einer Runde im Mitgliederbereich (Query-Parameter: in beiden Editionen gleich). */
+export function roundPath(id: string): string {
+  return `/member/rounds/view?id=${encodeURIComponent(id)}`;
 }

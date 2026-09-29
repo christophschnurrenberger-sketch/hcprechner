@@ -46,34 +46,7 @@ const FACILITY_LABELS: Record<string, string> = {
   DRIVING_RANGE: "Driving Range / Übungsanlage (nicht handicap-relevant)",
 };
 
-/** Felder der Admin-Anmeldung: Haupt-Passwort oder Benutzername + Passwort (Golfplatzpflege). */
-export function AdminLoginFields() {
-  return (
-    <>
-      <Field label="Benutzername" htmlFor="pw-user" hint="Nur für Benutzer mit Golfplatzpflege – für das Haupt-Passwort leer lassen.">
-        <Input id="pw-user" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} />
-      </Field>
-      <Field label="Passwort" htmlFor="pw">
-        <Input id="pw" name="password" type="password" autoComplete="current-password" required />
-      </Field>
-    </>
-  );
-}
-
-export function LoginForm({ loginAction }: { loginAction: (prev: ActionState, fd: FormData) => Promise<ActionState> }) {
-  const [state, action, pending] = useActionState(loginAction, initial);
-  const submit = useKeepValuesSubmit(action);
-  return (
-    <form onSubmit={submit} className="space-y-3">
-      <AdminLoginFields />
-      <Message state={state} />
-      <Button type="submit" disabled={pending}>
-        Anmelden
-      </Button>
-    </form>
-  );
-}
-
+/** Formular für Stammdaten einer Golfanlage (anlegen und bearbeiten). */
 export function CourseForm({ course }: { course?: CourseDto }) {
   const { saveCourse } = useAdminBackend();
   const router = useRouter();

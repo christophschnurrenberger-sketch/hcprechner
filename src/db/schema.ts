@@ -286,3 +286,111 @@ export const appUserData = pgTable("app_user_data", {
   revision: integer("revision").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Version 2: Konten mit Rollen, Mitglieder-Dokumente, Audit-Log, Einstellungen
+// (app_users/app_user_data bleiben als Altbestand für die Übernahme erhalten)
+// ---------------------------------------------------------------------------
+
+/** Benutzerkonten. Rolle und Status werden bei jeder Anfrage serverseitig geprüft. */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Anmeldename (klein geschrieben); ältere Konten können nur einen Benutzernamen haben. */
+    email: text("email"),
+    username: text("username"),
+    firstName: text("first_name").notNull().default(""),
+    lastName: text("last_name").notNull().default(""),
+    role: text("role").notNull().default("USER"),
+    status: text("status").notNull().default("ACTIVE"),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    /** Neue E-Mail-Adresse bis zur Bestätigung. */
+    pendingEmail: text("pending_email"),
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
+    passwordHash: text("password_hash").notNull(),
+    /** Ändert sich bei jedem Passwortwechsel – meldet bestehende Sitzungen ab. */
+    passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }).notNull().defaultNow(),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("users_email_idx").on(t.email),
+    uniqueIndex("users_username_idx").on(t.username),
+    check("users_role_check", sql`${t.role} in ('USER', 'SUPPORT', 'ADMIN', 'SUPER_ADMIN')`),
+    check("users_status_check", sql`${t.status} in ('ACTIVE', 'DISABLED', 'LOCKED')`),
+  ],
+);
+
+/** Einmal-Token (E-Mail-Bestätigung, Passwort zurücksetzen). Gespeichert wird nur der SHA-256-Hash. */
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("auth_tokens_hash_idx").on(t.tokenHash), index("auth_tokens_user_idx").on(t.userId), check("auth_tokens_purpose_check", sql`${t.purpose} in ('VERIFY_EMAIL', 'RESET_PASSWORD')`)],
+);
+
+/** Daten eines Mitglieds (Profil, Runden, Entwürfe, Vorlieben) als ein Dokument mit Revision. */
+export const memberData = pgTable("member_data", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  data: jsonb("data").notNull(),
+  revision: integer("revision").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Audit-Log: bleibt auch nach dem Löschen eines Kontos erhalten (keine Fremdschlüssel). */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    action: text("action").notNull(),
+    actorId: uuid("actor_id"),
+    actorName: text("actor_name"),
+    userId: uuid("user_id"),
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
+    oldValue: jsonb("old_value"),
+    newValue: jsonb("new_value"),
+  },
+  (t) => [index("audit_log_created_idx").on(t.createdAt), index("audit_log_action_idx").on(t.action), index("audit_log_user_idx").on(t.userId)],
+);
+
+/** Einstellungen (Schlüssel → JSON). */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Server-Fehler (für die Systemseite im Admin-Bereich). */
+export const errorLog = pgTable("error_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  message: text("message").notNull(),
+});
+
+/** Versendete E-Mails (nur Empfänger, Betreff, Status – kein Inhalt). */
+export const mailLog = pgTable("mail_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  recipient: text("recipient").notNull(),
+  subject: text("subject").notNull(),
+  status: text("status").notNull(),
+});
+
+export type UserRow = typeof users.$inferSelect;
+export type NewUserRow = typeof users.$inferInsert;
+export type AuditRow = typeof auditLog.$inferSelect;

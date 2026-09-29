@@ -1,14 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { coursesToCsv } from "@/lib/courses/csv";
 import { buildQualityReport } from "@/lib/courses/quality";
-import { isAdmin } from "@/server/adminAuth";
+import { requireAdmin } from "@/server/adminAuth";
 import { loadAllCourses } from "@/server/courseRepository";
 
 export const dynamic = "force-dynamic";
 
 /** Export der Golfplatzdatenbank (CSV im Importschema, JSON vollständig, Qualitätsbericht). */
 export async function GET(request: NextRequest) {
-  if (!(await isAdmin())) return NextResponse.json({ error: "Nicht berechtigt" }, { status: 401 });
+  try {
+    await requireAdmin("courses.read");
+  } catch {
+    return NextResponse.json({ error: "FORBIDDEN", message: "Dafür fehlt dir die Berechtigung." }, { status: 403 });
+  }
   const format = request.nextUrl.searchParams.get("format") ?? "json";
   const courses = await loadAllCourses({ includeInactive: true });
   const stamp = new Date().toISOString().slice(0, 10);

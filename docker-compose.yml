@@ -20,8 +20,13 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://hcp:hcp@db:5432/hcprechner
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      # Erstes Super-Admin-Konto (nur solange es noch keines gibt)
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL setzen (z. B. in .env)}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD setzen (z. B. in .env)}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     ports:
       - "3000:3000"
 

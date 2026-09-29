@@ -135,6 +135,21 @@ export interface Round {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  /** Speicherstatus im Mitgliederbereich (von der Engine nicht ausgewertet; gelöschte Runden werden vorher entfernt). */
+  status?: "COMPLETED" | "DELETED";
+  deletedAt?: string | null;
+  /** Ergebnis-Schnappschuss zum Zeitpunkt der Speicherung (Anzeige in Listen, nicht Grundlage der Berechnung). */
+  computed?: RoundComputedSnapshot | null;
+}
+
+export interface RoundComputedSnapshot {
+  scoreDifferential: number | null;
+  adjustedGrossScore: number | null;
+  handicapIndexBefore: number;
+  handicapIndexAfter: number;
+  /** Regelwerk und Engine-Version, mit der gerechnet wurde. */
+  engine: string;
+  computedAt: string;
 }
 
 export interface PlayerProfile {

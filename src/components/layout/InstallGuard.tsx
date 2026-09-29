@@ -2,19 +2,18 @@ import { BASE_PATH } from "@/lib/runtime";
 
 /** Oberste Seitenordner – daraus wird vor der Installation der Installationsordner ermittelt. */
 const TOP_LEVEL_ROUTES = [
-  "runden",
-  "runde",
-  "runde-erfassen",
-  "scoring-record",
-  "simulator",
-  "gbe-rechner",
-  "statistiken",
+  "member",
+  "admin",
+  "login",
+  "register",
+  "forgot-password",
+  "reset-password",
+  "verify-email",
+  "datenschutz",
+  "impressum",
+  "hilfe",
   "golfplaetze",
   "methodik",
-  "einstellungen",
-  "anmelden",
-  "konto",
-  "admin",
 ];
 
 /**

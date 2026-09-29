@@ -127,7 +127,7 @@
   --color-critical-soft: var(--critical-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -144,6 +144,16 @@ body {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Barrierearm: Bewegungen reduzieren, wenn gewünscht */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Fokus sichtbar halten */

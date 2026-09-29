@@ -1,4 +1,4 @@
-import { searchCourses, type CourseSearchQuery, type CourseSearchResult } from "./search";
+import { courseCapabilities, searchCourses, type CourseSearchQuery, type CourseSearchResult } from "./search";
 import type { CourseDto, LayoutType } from "./types";
 import type { Gender, IsoDate, NineSide } from "@/lib/whs/types";
 
@@ -120,4 +120,16 @@ export function runCourseSearch(courses: readonly CourseDto[], params: URLSearch
     totalCourses: courses.length,
     results: results.slice(0, limit).map(toCourseSummary),
   };
+}
+
+/** Zusammenfassungen für bestimmte Anlagen (Favoriten, Heimatplatz, zuletzt gespielt) in der Reihenfolge der IDs. */
+export function summarizeCourses(courses: readonly CourseDto[], ids: readonly string[]): CourseSummary[] {
+  const byId = new Map(courses.map((c) => [c.id, c]));
+  const out: CourseSummary[] = [];
+  for (const id of ids) {
+    const course = byId.get(id);
+    if (!course || !course.active) continue;
+    out.push(toCourseSummary({ course, score: 0, distanceKm: null, ...courseCapabilities(course) }));
+  }
+  return out;
 }

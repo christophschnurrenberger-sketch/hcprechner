@@ -1,0 +1,1295 @@
+# Erzeugt aus der Beschreibung in docs/ARCHITEKTUR.md – API beider Editionen
+openapi: 3.1.0
+info:
+  title: Golf HCP Rechner – WHS 2026 · API
+  version: 2.0.0
+  description: 'Schnittstelle zwischen Oberfläche und Backend. Die Oberfläche greift ausschließlich über den API-Adapter
+
+    (`src/lib/api/client.ts`) zu.
+
+
+    **Node-Edition:** REST-Route-Handler unter `/api/auth`, `/api/me`, `/api/admin`. Die WHS-Berechnung erfolgt
+
+    auf dem Server über die Service-Schicht `src/lib/member`.
+
+
+    **Webspace-Edition:** PHP-Skripte `api/auth.php`, `api/me.php`, `api/admin.php` (jeweils `?action=…`,
+
+    siehe `x-webspace`). PHP übernimmt Anmeldung, Rollenprüfung, Datentrennung, Speicherung und Audit-Log.
+
+    Die WHS-Berechnung führt der API-Adapter mit derselben Service-Schicht aus, weil PHP kein TypeScript ausführen
+
+    kann. PHP speichert nur strukturgeprüfte Ergebnisse. Die Antworten des Adapters entsprechen den
+
+    hier beschriebenen Strukturen.
+
+
+    **Sitzung:** signiertes HttpOnly-Cookie `hcp_session` (14 Tage, gleitend, SameSite=Lax, in Produktion Secure).
+
+    Es gibt keine Tokens in localStorage oder sessionStorage. Rolle, Status und Passwortstand werden bei jeder
+
+    Anfrage serverseitig aus der Datenbank bzw. `data/users.php` gelesen.
+
+
+    **CSRF:** Schreibende Anfragen senden den Header `X-CSRF-Token`. Den Token liefert `GET /api/auth/me`; er ist
+
+    an Konto und Passwortstand gebunden. Die Node-Edition prüft zusätzlich den `Origin`-Header.
+
+
+    **Fehler:** immer `{ error: CODE, message, fields? }`, Codes siehe `ApiError`.
+
+    '
+servers:
+- url: http://localhost:3000
+  description: Node-Edition (Entwicklung)
+tags:
+- name: auth
+  description: Konto und Anmeldung (öffentlich bzw. angemeldet)
+- name: me
+  description: Daten des angemeldeten Mitglieds – die Benutzer-ID stammt immer aus der Sitzung
+- name: admin
+  description: Admin-Backend – jede Route prüft ihre Berechtigung serverseitig
+- name: courses
+  description: Öffentliche Golfplatzdaten
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: hcp_session
+    csrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  parameters:
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 5
+        maximum: 200
+        default: 25
+  responses:
+    Error:
+      description: Strukturierter Fehler
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    ApiError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+          enum:
+          - UNAUTHENTICATED
+          - SESSION_EXPIRED
+          - FORBIDDEN
+          - NOT_FOUND
+          - VALIDATION
+          - CONFLICT
+          - RATE_LIMITED
+          - SERVER
+          - INVALID_CREDENTIALS
+          - EMAIL_NOT_VERIFIED
+          - ACCOUNT_DISABLED
+          - ACCOUNT_LOCKED
+          - EMAIL_TAKEN
+          - REGISTRATION_CLOSED
+          - TOKEN_INVALID
+          - COURSE_NOT_FOUND
+          - COURSE_RATING_MISSING
+          - RATING_NOT_VERIFIED
+          - NINE_HOLE_RATING_MISSING
+          - HOLE_DATA_MISSING
+          - ROUND_NOT_FOUND
+          - ROUND_INVALID
+        message:
+          type: string
+          description: Verständliche deutsche Meldung
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Meldungen je Eingabefeld
+    Role:
+      type: string
+      enum:
+      - USER
+      - SUPPORT
+      - ADMIN
+      - SUPER_ADMIN
+    UserStatus:
+      type: string
+      enum:
+      - ACTIVE
+      - DISABLED
+      - LOCKED
+    SessionUser:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type:
+          - string
+          - 'null'
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Rechte der Rolle (vom Server)
+        emailVerified:
+          type: boolean
+        mustChangePassword:
+          type: boolean
+        onboarded:
+          type: boolean
+    PublicSettings:
+      type: object
+      properties:
+        siteName:
+          type: string
+        registrationOpen:
+          type: boolean
+        emailVerificationRequired:
+          type: boolean
+        imprintText:
+          type:
+          - string
+          - 'null'
+        privacyText:
+          type:
+          - string
+          - 'null'
+        contactEmail:
+          type:
+          - string
+          - 'null'
+    MeResponse:
+      type: object
+      properties:
+        installed:
+          type: boolean
+        user:
+          oneOf:
+          - $ref: '#/components/schemas/SessionUser'
+          - type: 'null'
+        csrf:
+          type:
+          - string
+          - 'null'
+        settings:
+          $ref: '#/components/schemas/PublicSettings'
+        appVersion:
+          type: string
+    RoundInput:
+      type: object
+      description: Eingabe des Runden-Wizards. Bei Plätzen aus der Datenbank löst das Backend Par, Course Rating, Slope und Lochdaten selbst auf
+        (zum Spieldatum gültiges, geprüftes Rating) – Werte des Clients werden dafür nicht verwendet. 9-Loch-Ratings werden nie aus 18-Loch-Ratings
+        abgeleitet.
+      required:
+      - date
+      - category
+      - course
+      - holes
+      - score
+      properties:
+        date:
+          type: string
+          format: date
+        title:
+          type: string
+        category:
+          type: string
+          enum:
+          - TOURNAMENT
+          - RPR
+          - OTHER
+        holes:
+          type: integer
+          enum:
+          - 9
+          - 18
+        nine:
+          type:
+          - string
+          - 'null'
+          enum:
+          - FRONT
+          - BACK
+          - null
+        pcc:
+          type: integer
+          enum:
+          - -1
+          - 0
+          - 1
+          - 2
+          - 3
+        notes:
+          type: string
+        course:
+          oneOf:
+          - type: object
+            required:
+            - kind
+            - courseId
+            - layoutId
+            - teeColor
+            - gender
+            properties:
+              kind:
+                const: DB
+              courseId:
+                type: string
+              layoutId:
+                type: string
+              teeColor:
+                type: string
+              gender:
+                type: string
+                enum:
+                - M
+                - F
+          - type: object
+            required:
+            - kind
+            - courseName
+            - gender
+            - par
+            - courseRating
+            - slopeRating
+            description: Werte von der offiziellen Scorekarte (Ausland, ungeprüfte Ratings)
+            properties:
+              kind:
+                const: MANUAL
+              courseName:
+                type: string
+              city:
+                type:
+                - string
+                - 'null'
+              teeColor:
+                type:
+                - string
+                - 'null'
+              gender:
+                type: string
+                enum:
+                - M
+                - F
+              par:
+                type: integer
+              courseRating:
+                type: number
+              slopeRating:
+                type: integer
+                minimum: 55
+                maximum: 155
+          - type: 'null'
+        score:
+          oneOf:
+          - type: object
+            properties:
+              mode:
+                const: GBE
+              adjustedGrossScore:
+                type: integer
+          - type: object
+            properties:
+              mode:
+                const: HOLES
+              strokes:
+                type: array
+                items:
+                  oneOf:
+                  - type: integer
+                  - const: PICKUP
+                  - type: 'null'
+          - type: object
+            properties:
+              mode:
+                const: STABLEFORD_TOTAL
+              points:
+                type: integer
+    RoundListItem:
+      type: object
+      properties:
+        id:
+          type: string
+        date:
+          type: string
+          format: date
+        courseName:
+          type: string
+        holes:
+          type: integer
+        adjustedGrossScore:
+          type:
+          - integer
+          - 'null'
+        scoreDifferential:
+          type:
+          - number
+          - 'null'
+        adjustedScoreDifferential:
+          type:
+          - number
+          - 'null'
+        handicapIndexBefore:
+          type: number
+        handicapIndexAfter:
+          type:
+          - number
+          - 'null'
+        relevant:
+          type: boolean
+        counted:
+          type: boolean
+        note:
+          type:
+          - string
+          - 'null'
+    HcpResult:
+      type: object
+      description: Handicap Index mit Rechenweg (Auszug)
+      properties:
+        status:
+          type: string
+          enum:
+          - INITIAL
+          - ACTIVE
+        currentHandicapIndex:
+          type: number
+        calculatedHandicapIndex:
+          type:
+          - number
+          - 'null'
+        startHandicapIndex:
+          type: number
+        lowHandicapIndex:
+          type:
+          - number
+          - 'null'
+        scoringRecordCount:
+          type: integer
+        usedCount:
+          type:
+          - integer
+          - 'null'
+        calculationLabel:
+          type: string
+          examples:
+          - Durchschnitt der besten 4 von 12 Score Differentials
+        countedScoreDifferentials:
+          type: array
+          items:
+            type: object
+        deviation:
+          type:
+          - object
+          - 'null'
+        changeSinceLastRound:
+          type:
+          - object
+          - 'null'
+        history:
+          type: array
+          items:
+            type: object
+        record:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoundListItem'
+    RoundPreview:
+      type: object
+      properties:
+        item:
+          $ref: '#/components/schemas/RoundListItem'
+        result:
+          type: object
+          description: Vollständiges Rechenergebnis (Score Differential
+          GBE je Loch: null
+          Relevanz): null
+        hcpBefore:
+          type: number
+        hcpAfter:
+          type: number
+        changed:
+          type: boolean
+        issues:
+          type: array
+          items:
+            type: string
+        blocking:
+          type: boolean
+    RoundSaveResult:
+      allOf:
+      - $ref: '#/components/schemas/RoundPreview'
+      - type: object
+        properties:
+          roundId:
+            type: string
+    AdminUserRow:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type:
+          - string
+          - 'null'
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        emailVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        lastActivityAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        rounds:
+          type: integer
+    AuditEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        action:
+          type: string
+        actorId:
+          type:
+          - string
+          - 'null'
+        actorName:
+          type:
+          - string
+          - 'null'
+        userId:
+          type:
+          - string
+          - 'null'
+        entityType:
+          type:
+          - string
+          - 'null'
+        entityId:
+          type:
+          - string
+          - 'null'
+        oldValue: {}
+        newValue: {}
+    Page:
+      type: object
+      properties:
+        items:
+          type: array
+          items: {}
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+paths:
+  /api/auth/me:
+    get:
+      tags:
+      - auth
+      summary: Sitzung, CSRF-Token und öffentliche Einstellungen
+      x-webspace: GET api/auth.php?action=me
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+  /api/auth/login:
+    post:
+      tags:
+      - auth
+      summary: Anmelden (E-Mail oder Benutzername älterer Konten)
+      description: Begrenzt auf 10 Fehlversuche je Anschluss und 8 je Konto in 15 Minuten. Gleiche Antwort und Laufzeit für falsches Passwort
+        und unbekanntes Konto.
+      x-webspace: POST api/auth.php?action=login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Angemeldet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/SessionUser'
+                  csrf:
+                    type: string
+        '401': &id001
+          $ref: '#/components/responses/Error'
+        '403':
+          description: EMAIL_NOT_VERIFIED, ACCOUNT_DISABLED, ACCOUNT_LOCKED
+        '429': *id001
+  /api/auth/logout:
+    post:
+      tags:
+      - auth
+      summary: Abmelden
+      x-webspace: POST api/auth.php?action=logout
+      responses:
+        '200':
+          description: OK
+  /api/auth/register:
+    post:
+      tags:
+      - auth
+      summary: Registrieren – die Rolle ist immer USER
+      x-webspace: POST api/auth.php?action=register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - firstName
+              - lastName
+              - email
+              - password
+              - passwordRepeat
+              - acceptTerms
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                passwordRepeat:
+                  type: string
+                handicapIndex:
+                  type:
+                  - string
+                  - number
+                  - 'null'
+                  description: Start-HCPI, Dezimalkomma erlaubt (−10 bis 54)
+                acceptTerms:
+                  const: true
+      responses:
+        '201':
+          description: verificationRequired=true (E-Mail verschickt) oder angemeldet
+        '400': *id001
+        '403':
+          description: REGISTRATION_CLOSED
+        '409':
+          description: EMAIL_TAKEN
+  /api/auth/verify-email:
+    post:
+      tags:
+      - auth
+      summary: E-Mail-Adresse bestätigen (Token aus der E-Mail, 48 Stunden gültig)
+      x-webspace: POST api/auth.php?action=verify-email
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: TOKEN_INVALID
+  /api/auth/resend-verification:
+    post:
+      tags:
+      - auth
+      summary: Bestätigungslink erneut senden – Antwort immer gleich
+      x-webspace: POST api/auth.php?action=resend-verification
+      responses:
+        '200':
+          description: OK
+  /api/auth/forgot-password:
+    post:
+      tags:
+      - auth
+      summary: Link zum Zurücksetzen anfordern (1 Stunde gültig) – Antwort immer gleich
+      x-webspace: POST api/auth.php?action=forgot-password
+      responses:
+        '200':
+          description: OK
+  /api/auth/reset-password:
+    post:
+      tags:
+      - auth
+      summary: Neues Passwort mit Token – meldet alle Geräte ab
+      x-webspace: POST api/auth.php?action=reset-password
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: TOKEN_INVALID oder VALIDATION
+  /api/auth/change-password:
+    post:
+      tags:
+      - auth
+      summary: Passwort ändern
+      security: &id002
+      - session: []
+        csrf: []
+      x-webspace: POST api/auth.php?action=change-password
+      responses:
+        '200':
+          description: Neue Sitzung und neuer CSRF-Token
+  /api/auth/update-profile:
+    post:
+      tags:
+      - auth
+      summary: Name und E-Mail ändern – neue E-Mail gilt erst nach Bestätigung
+      security: *id002
+      x-webspace: POST api/auth.php?action=update-profile
+      responses:
+        '200':
+          description: OK
+  /api/auth/export:
+    post:
+      tags:
+      - auth
+      summary: 'Datenauskunft: Konto und gespeicherte Daten ohne Hashes'
+      security: *id002
+      x-webspace: POST api/auth.php?action=export
+      responses:
+        '200':
+          description: OK
+  /api/auth/delete-account:
+    post:
+      tags:
+      - auth
+      summary: Eigenes Konto löschen (Passwort und Bestätigung „LÖSCHEN“)
+      security: *id002
+      x-webspace: POST api/auth.php?action=delete-account
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: letztes Super-Admin-Konto
+  /api/me:
+    get:
+      tags:
+      - me
+      summary: Profil und Vorlieben
+      security: &id003
+      - session: []
+      x-webspace: GET api/me.php?action=load – der Adapter bildet die Antwort aus dem Dokument
+      responses:
+        '200':
+          description: MemberProfileData
+  /api/me/dashboard:
+    get:
+      tags:
+      - me
+      summary: Dashboard
+      security: *id003
+      responses:
+        '200':
+          description: DashboardData
+  /api/me/hcp:
+    get:
+      tags:
+      - me
+      summary: Handicap Index mit Rechenweg und Verlauf
+      security: *id003
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HcpResult'
+  /api/me/rounds:
+    get:
+      tags:
+      - me
+      summary: Runden ohne gelöschte
+      security: *id003
+      parameters:
+      - name: holes
+        in: query
+        schema:
+          type: integer
+          enum:
+          - 9
+          - 18
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RoundListItem'
+    post:
+      tags:
+      - me
+      summary: Runde speichern (Audit ROUND_CREATED)
+      security: *id002
+      x-webspace: POST api/me.php?action=round-save mit round, draftId und baseRevision
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input:
+                  $ref: '#/components/schemas/RoundInput'
+                draftId:
+                  type:
+                  - string
+                  - 'null'
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundSaveResult'
+        '400':
+          description: VALIDATION, RATING_NOT_VERIFIED, NINE_HOLE_RATING_MISSING, COURSE_RATING_MISSING, HOLE_DATA_MISSING, ROUND_INVALID
+  /api/me/rounds/preview:
+    post:
+      tags:
+      - me
+      summary: Vorschau „Dein Ergebnis“ – wird nicht gespeichert
+      security: *id002
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundPreview'
+  /api/me/rounds/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - me
+      summary: Rundendetail mit Rechenweg
+      security: *id003
+      responses:
+        '200':
+          description: RoundDetail
+        '404':
+          description: ROUND_NOT_FOUND – auch für Runden anderer Mitglieder
+    put:
+      tags:
+      - me
+      summary: Runde ändern – der Verlauf wird chronologisch neu berechnet (Audit ROUND_MODIFIED)
+      security: *id002
+      responses:
+        '200':
+          description: RoundSaveResult
+    delete:
+      tags:
+      - me
+      summary: Soft Delete (Audit ROUND_DELETED)
+      security: *id002
+      x-webspace: POST api/me.php?action=round-delete
+      responses:
+        '200':
+          description: OK
+  /api/me/profile:
+    put:
+      tags:
+      - me
+      summary: Start-HCPI und Geschlecht
+      security: *id002
+      x-webspace: POST api/me.php?action=profile-save
+      responses:
+        '200':
+          description: MemberProfileData
+  /api/me/onboarding:
+    post:
+      tags:
+      - me
+      summary: Onboarding abschließen (Start-HCPI, Heimatplatz)
+      security: *id002
+      responses:
+        '200':
+          description: MemberProfileData
+  /api/me/courses:
+    get:
+      tags:
+      - me
+      summary: Favoriten, Heimatplatz, zuletzt gespielt
+      security: *id003
+      responses:
+        '200':
+          description: MemberCourseLists
+  /api/me/favorites/{courseId}:
+    put:
+      tags:
+      - me
+      summary: Favorit setzen oder entfernen
+      security: *id002
+      x-webspace: POST api/me.php?action=prefs-save
+      parameters:
+      - name: courseId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: MemberPreferences
+  /api/me/home-course:
+    put:
+      tags:
+      - me
+      summary: Heimatplatz festlegen
+      security: *id002
+      x-webspace: POST api/me.php?action=prefs-save
+      responses:
+        '200':
+          description: MemberPreferences
+  /api/me/drafts:
+    get:
+      tags:
+      - me
+      summary: Entwürfe (nicht abgeschlossene Runden)
+      security: *id003
+      responses:
+        '200':
+          description: Liste von DraftRound
+  /api/me/drafts/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    put:
+      tags:
+      - me
+      summary: Entwurf speichern (automatisch, höchstens 10)
+      security: *id002
+      x-webspace: POST api/me.php?action=draft-save
+      responses:
+        '200':
+          description: DraftRound
+    delete:
+      tags:
+      - me
+      summary: Entwurf verwerfen
+      security: *id002
+      x-webspace: POST api/me.php?action=draft-delete
+      responses:
+        '200':
+          description: OK
+  /api/me/import/preview:
+    post:
+      tags:
+      - me
+      summary: CSV-Import prüfen
+      security: *id002
+      responses:
+        '200':
+          description: ImportPreview
+  /api/me/import:
+    post:
+      tags:
+      - me
+      summary: CSV-Import übernehmen (Audit ROUNDS_IMPORTED)
+      security: *id002
+      x-webspace: POST api/me.php?action=rounds-import
+      responses:
+        '200':
+          description: imported und skipped
+  /api/me/statistics:
+    get:
+      tags:
+      - me
+      summary: Statistik
+      security: *id003
+      responses:
+        '200':
+          description: PlayerStatistics
+  /api/me/tools/{tool}:
+    post:
+      tags:
+      - me
+      summary: 'Werkzeuge: simulate (scoreDifferential), target (target), gbe (Scorekarte)'
+      security: *id002
+      parameters:
+      - name: tool
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - simulate
+          - target
+          - gbe
+      responses:
+        '200':
+          description: OK
+  /api/courses:
+    get:
+      tags:
+      - courses
+      summary: Golfplatzsuche (q, region, plz, has9, has18, tee, verified, limit)
+      x-webspace: GET api/courses.php liefert den Datensatz; die Suche läuft im Browser mit derselben Logik
+      responses:
+        '200':
+          description: CourseSearchResponse
+  /api/courses/{id}:
+    get:
+      tags:
+      - courses
+      summary: Anlage mit Plätzen, Ratings (Quelle, Prüfstatus, Gültigkeit) und Lochdaten
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: CourseDto
+  /api/admin/stats:
+    get:
+      tags:
+      - admin
+      summary: Kennzahlen und letzte Aktionen
+      description: 'Berechtigung: admin.access'
+      security: *id003
+      x-webspace: POST api/admin.php?action=stats
+      responses:
+        '200':
+          description: AdminStats
+        '403': *id001
+  /api/admin/users:
+    get:
+      tags:
+      - admin
+      summary: Benutzerliste mit Filtern und Seiten
+      description: 'Berechtigung: users.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=users
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+      - name: role
+        in: query
+        schema:
+          $ref: '#/components/schemas/Role'
+      - name: status
+        in: query
+        schema:
+          $ref: '#/components/schemas/UserStatus'
+      - name: verified
+        in: query
+        schema:
+          type: string
+          enum:
+          - 'yes'
+          - 'no'
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - name
+          - created
+          - lastLogin
+          - lastActivity
+          - role
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Page mit AdminUserRow
+        '403': *id001
+    post:
+      tags:
+      - admin
+      summary: 'Benutzer anlegen – ohne Passwort: Einladung per E-Mail'
+      description: 'Berechtigung: users.write; Rolle ungleich USER nur mit users.roles – Audit USER_CREATED'
+      security: *id002
+      x-webspace: POST api/admin.php?action=user-create
+      responses:
+        '201':
+          description: OK
+        '403': *id001
+        '409':
+          description: EMAIL_TAKEN
+  /api/admin/users/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - admin
+      summary: Benutzerdetail mit Handicap (Initial Handicap oder aktiver Scoring Record)
+      description: 'Berechtigung: users.read – Audit USER_DATA_VIEWED'
+      security: *id003
+      x-webspace: POST api/admin.php?action=user
+      responses:
+        '200':
+          description: AdminUserDetail
+        '403': *id001
+    patch:
+      tags:
+      - admin
+      summary: Name, E-Mail, Rolle, Status ändern oder E-Mail bestätigen
+      description: 'Berechtigung: users.write (nur niedrigere Rollen, nie das eigene Konto); Rolle nur mit users.roles; das letzte Super-Admin-Konto
+        ist geschützt – Audit je Änderung'
+      security: *id002
+      x-webspace: POST api/admin.php?action=user-update
+      responses:
+        '200':
+          description: OK
+        '403': *id001
+        '409':
+          description: letztes Super-Admin-Konto
+    delete:
+      tags:
+      - admin
+      summary: Konto löschen (confirm = „LÖSCHEN“)
+      description: 'Berechtigung: users.delete – Audit USER_DELETED (der Eintrag bleibt erhalten)'
+      security: *id002
+      x-webspace: POST api/admin.php?action=user-delete
+      responses:
+        '200':
+          description: OK
+        '403': *id001
+  /api/admin/users/{id}/password:
+    post:
+      tags:
+      - admin
+      summary: 'Passwort: Link per E-Mail (mode=mail) oder vorläufiges Passwort (mode=temporary)'
+      description: 'Berechtigung: users.write'
+      security: *id002
+      x-webspace: POST api/admin.php?action=user-password
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+        '403': *id001
+  /api/admin/users/{id}/view:
+    get:
+      tags:
+      - admin
+      summary: Lesende Benutzeransicht – keine Übernahme der Sitzung
+      description: 'Berechtigung: users.impersonate – Audit IMPERSONATION_VIEW'
+      security: *id003
+      x-webspace: POST api/admin.php?action=impersonate
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: AdminImpersonation
+        '403': *id001
+  /api/admin/rounds:
+    get:
+      tags:
+      - admin
+      summary: Runden aller Mitglieder (q, userId, status, from, to)
+      description: 'Berechtigung: rounds.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=rounds
+      responses:
+        '200':
+          description: Page mit AdminRoundRow
+        '403': *id001
+  /api/admin/rounds/{userId}/{roundId}:
+    get:
+      tags:
+      - admin
+      summary: Rundendetail, mit der aktuellen Engine neu berechnet
+      description: 'Berechtigung: rounds.read – Audit USER_DATA_VIEWED'
+      security: *id003
+      x-webspace: POST api/admin.php?action=round
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: AdminRoundDetail
+        '403': *id001
+  /api/admin/logs:
+    get:
+      tags:
+      - admin
+      summary: Audit-Log (action, group=admin oder member, actorId, userId, q, from, to)
+      description: 'Berechtigung: logs.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=logs
+      responses:
+        '200':
+          description: Page mit AuditEntry
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Page'
+        '403': *id001
+  /api/admin/system:
+    get:
+      tags:
+      - admin
+      summary: Systemprüfung, Fehler, Mail-Protokoll, Engine-Version
+      description: 'Berechtigung: system.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=system
+      responses:
+        '200':
+          description: SystemStatus
+        '403': *id001
+  /api/admin/rules:
+    get:
+      tags:
+      - admin
+      summary: Aktive Regelversion und Parameter
+      description: 'Berechtigung: rules.read'
+      security: *id003
+      x-webspace: im Adapter aus der statischen Regelkonfiguration
+      responses:
+        '200':
+          description: RulesInfo
+        '403': *id001
+  /api/admin/settings:
+    get:
+      tags:
+      - admin
+      summary: Einstellungen
+      description: 'Berechtigung: settings.write'
+      security: *id003
+      x-webspace: POST api/admin.php?action=settings
+      responses:
+        '200':
+          description: AdminSettings
+        '403': *id001
+    put:
+      tags:
+      - admin
+      summary: Einstellungen speichern
+      description: 'Berechtigung: settings.write – Audit SETTINGS_CHANGED'
+      security: *id002
+      x-webspace: POST api/admin.php?action=settings-save
+      responses:
+        '200':
+          description: AdminSettings
+        '403': *id001
+  /api/admin/settings/mail-test:
+    post:
+      tags:
+      - admin
+      summary: Test-E-Mail senden
+      description: 'Berechtigung: settings.write'
+      security: *id002
+      x-webspace: POST api/admin.php?action=mail-test
+      responses:
+        '200':
+          description: OK
+        '403': *id001
+  /api/admin/search:
+    get:
+      tags:
+      - admin
+      summary: Globale Suche (Benutzer, Runden, Golfplätze – je nach Rechten)
+      description: 'Berechtigung: admin.access'
+      security: *id003
+      x-webspace: POST api/admin.php?action=search
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+      responses:
+        '200':
+          description: AdminSearchResult
+        '403': *id001
+  /api/admin/export:
+    get:
+      tags:
+      - admin
+      summary: Export der Golfplatzdaten (format=csv, json oder quality)
+      description: 'Berechtigung: courses.read. Die Golfplatzpflege läuft in der Node-Edition über Server Actions (courses.write, import), in
+        der Webspace-Edition über api/admin.php?action=courses-load und courses-save mit Revisionsprüfung'
+      security: *id003
+      responses:
+        '200':
+          description: Datei
+        '403': *id001

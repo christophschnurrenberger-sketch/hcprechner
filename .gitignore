@@ -51,3 +51,4 @@ next-env.d.ts
 
 # vitest cache
 /.vitest/
+.e2e/

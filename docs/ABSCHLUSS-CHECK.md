@@ -1,21 +1,78 @@
-# Abschluss-Check (Spezifikation §79)
+# Abschluss-Check
 
-Stand: 29.09.2026 · 331 automatisierte Tests (davon 231 für die WHS-Engine), ESLint und TypeScript ohne Befund,
-Produktions-Build erfolgreich, Standalone-Server mit PGlite und mit PostgreSQL 16 geprüft, Browser-Tests (Desktop und
-390 px) für Dashboard, Wizard (manuell und Datenbank, 9 Loch, Scorekarte), Rundendetail, Scoring Record, Simulator,
-Einstellungen/Export, Admin (CRUD, CSV-Import), Golfplatzsuche und öffentliche Golfplatzseite.
+Stand: 29.09.2026 · Version 2.0.0 · **365 automatisierte Tests** (231 WHS-Engine, 46 Rechte/Sicherheit/Service-Schicht
+inkl. PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
 
-Webspace-Edition: ZIP-Paket mit `php -S` (PHP 8.4) als simuliertem Webspace geprüft – Installation im Unterordner und
-in der Domain-Wurzel, Update über bestehende Installation, Admin (Anmeldung, Anlage/Platz/Rating, Validierung,
-Speichern auf dem Server), Golfplatzsuche und Anlagen-Seite, Runde mit Platz aus der Datenbank erfassen,
-Synchronisation, 404-Seite, Schutz von `data/`, CSRF-Schutz, Sitemap, Mobilansicht (je 28/28 Prüfungen).
+## Version 2 – Frontend mit Mitgliederbereich und Admin-Backend (Master-Prompt)
 
-Benutzerkonten (beide Editionen im Browser geprüft): Anlegen durch den Admin, Startpasswort und Pflichtwechsel,
-automatisches Speichern im Konto, zweites Gerät, Übernahme der Browser-Runden, Abmelden entfernt Kontodaten aus dem
-Browser, Co-Admin mit Golfplatzpflege ohne Benutzerverwaltung, Passwort zurücksetzen meldet ab, Sperren, Löschen
-(Webspace 19/19, Node 9/9 Prüfungen); Konflikt-Zusammenführung und Wiederholungslogik als Unit Tests.
-Nicht geprüft: echter Apache mit `.htaccess` (kein Apache in der Build-Umgebung) – die `.htaccess`-Anweisungen sind
-in `<IfModule>` gekapselt, und `install.php` schaltet bei HTTP 500 automatisch auf eine minimale Fassung um.
+### Abläufe A–K (§157)
+
+Automatisiert mit Playwright (`e2e/flows.cjs`) gegen beide Editionen: Webspace-ZIP installiert unter `php -S`
+(PHP 8.4, Unterordner `/hcp`, Mail im Modus „Ablage“) und Node-Standalone-Server mit PGlite (`MAIL_MODE=outbox`).
+Ergebnis: **Webspace 61/61, Node 62/62 Prüfungen** (Node zusätzlich: fremde Runde per REST `GET /api/me/rounds/<id>`
+→ 404). Testdaten: ein fiktiver Testplatz („E2E Testclub“) nur in der Testinstallation.
+
+| Ablauf | Inhalt | Ergebnis |
+|---|---|---|
+| A | Registrierung mit Feldvalidierung → Bestätigungsmail → Anmeldung vor Bestätigung abgelehnt → Link → erste Anmeldung → Onboarding | ✅ |
+| B | mehrere Runden → aktiver HCPI (3 Ergebnisse: bestes SD − 2,0 = 11,6), Ergebnisseite HCPI vorher/nachher | ✅ |
+| C | 9-Loch-Runde (Ergänzung um erwartetes Ergebnis), Hinweis „Kein 9-Loch-Rating vorhanden“ ohne Ableitung aus 18 Loch, Filter 9 Loch | ✅ |
+| D | 18-Loch-Runde als GBE auf Datenbank-Platz mit Vorschau, SD 15,2 vom Backend; Scorekarte Loch für Loch mit Netto-Doppelbogey im Rechenweg | ✅ |
+| E | Benutzer ohne Runden und ohne Start-HCPI → 54,0, leerer Zustand auf der Startseite | ✅ |
+| F | Benutzer mit Start-HCPI (Onboarding fragt ihn ab) → Startseite zeigt 18,4 | ✅ |
+| G | Admin: Dashboard, Startdaten übernehmen, CSV-Import, Lochdaten, Ratings/Quellen, Benutzer anlegen, HCP des Benutzers, Benutzeransicht (lesend, protokolliert), Rundenübersicht, Audit-Log, Regeln, System, globale Suche, Registrierung schließen | ✅ |
+| H | anonym `/member` und `/admin` → Anmeldeseite; Mitglied auf `/admin` → zurück mit Hinweis; Admin-API als Mitglied → 403 | ✅ |
+| I | fremde Daten: eigenes Dokument ohne fremde Runden; fremde Runde per ID lesen oder löschen → nicht gefunden | ✅ |
+| J | Smartphone 390 px: untere Navigation, Loch-für-Loch-Eingabe, keine horizontale Scrollleiste | ✅ |
+| K | Desktop 1440 px: Startseite, Admin mit Seitenleiste | ✅ |
+| – | Runde bearbeiten/löschen, Entwurf automatisch gespeichert, Favorit, HCP-Seite mit Rechenweg, CSRF ohne Token abgelehnt, deaktiviertes Konto (Anmeldung abgelehnt, Sitzung beendet), Passwort vergessen, Abmelden, keine JavaScript-Fehler | ✅ |
+
+### Sicherheit (§1, §156)
+
+| Anforderung | Status | Umsetzung / Nachweis |
+|---|---|---|
+| Berechtigung serverseitig, nicht nur UI | ✅ | jede Admin-Aktion mit fester Berechtigung (`requirePermission` bzw. Aktionsmatrix in `admin.php`); Seiten vorab durch `proxy.server.ts`/Server-Layout bzw. `gate.php`; Test „Mitglied → Admin-API 403“ (PHP-Test, E2E H) |
+| Rolle aus Backend/Session, nie clientseitig | ✅ | `useSession()` lädt `/api/auth/me`; kein Rollen-Default im Client; `tests/auth/security.test.ts` |
+| Normale User können nie ADMIN wählen | ✅ | Registrierung setzt fest `USER`; Rollenwechsel nur `users.roles` (Super-Admin), nie für das eigene Konto; PHP-Test „Registrierung: Rolle aus der Anfrage wird ignoriert“ |
+| Passwort nie im Klartext gespeichert/geloggt | ✅ | scrypt bzw. `password_hash`; Audit speichert keine Passwörter; Mail-Protokoll nur Empfänger, Betreff, Status |
+| Kein Token in localStorage/sessionStorage | ✅ | HttpOnly-Cookie; CSRF-Token nur im Arbeitsspeicher (`transport.ts`) |
+| Keine hartkodierten URLs/IDs/Passwörter/Secrets | ✅ | `APP_URL`, `SESSION_SECRET`, `ADMIN_EMAIL/PASSWORD`, `SMTP_URL` aus der Umgebung; Webspace: `data/config.php` aus `install.php` |
+| Admin-Secrets nie im Browser | ✅ | SMTP-Passwort wird nicht ausgeliefert (nur `hasPassword`), Sitzungsschlüssel nur serverseitig |
+| User sieht nur eigene Daten | ✅ | Benutzer-ID ausschließlich aus der Sitzung; PHP-Test „Isolation“, E2E I |
+| Impersonation protokolliert, nur lesend | ✅ | `IMPERSONATION_VIEW` im Audit-Log, deutlich markiertes Banner, keine Schreibaktionen |
+| Deaktivierte Benutzer: kein Login, Daten bleiben | ✅ | Status `DISABLED`/`LOCKED` → `ACCOUNT_DISABLED`/`ACCOUNT_LOCKED`; PHP-Test und E2E G |
+| Audit kritischer Aktionen | ✅ | Zeitpunkt, `user_id`, `admin_id`, Aktion, Entität, alter/neuer Wert (`audit_log` bzw. `data/audit/`) |
+| CSRF, Ratenbegrenzung, gleiche Antwort für unbekannte Konten | ✅ | PHP-Tests „CSRF“, „unbekanntes Konto“; Anmeldung je IP und Konto begrenzt |
+| Letzter Super-Admin geschützt | ✅ | Herabstufen, Deaktivieren, Löschen und Kontolöschung verweigert |
+
+### Oberfläche (Auswahl §156)
+
+| Punkt | Status |
+|---|---|
+| Getrennte Layouts für Öffentlich/Mitglied/Admin | ✅ `PublicShell`, `MemberShell`, `AdminShell` |
+| Mitglied: höchstens 5 Navigationspunkte, mobile Leiste unten, „+ Runde erfassen“ | ✅ |
+| Großer HCPI mit Veränderung, Ergebnisseite vorher/nachher | ✅ |
+| Wizard nur mit hinterlegten Abschlägen, GBE oder Loch für Loch, 9-Loch-Hinweis | ✅ |
+| Rechenweg je Runde (Akkordeon), Bearbeiten, Löschen (Papierkorb), Entwürfe mit Autospeichern | ✅ |
+| Favoriten, Heimatplatz, zuletzt gespielt; Onboarding | ✅ |
+| Profil: Konto, Sicherheit (Passwort, E-Mail-Wechsel mit Bestätigung), Datenschutz (Export, Konto löschen), Abmelden | ✅ |
+| Admin: dichte Tabellen mit Filter/Sortierung/Seiten, globale Suche, Berechtigungsübersicht | ✅ |
+| Lade-, Leer- und Fehlerzustände (Skeleton, Retry), Toasts, Bestätigungsdialoge | ✅ |
+| Barrierefreiheit: Labels, `aria-live`, Fokus, Tastatur, `prefers-reduced-motion`, Kontrast (hell/dunkel) | ✅ |
+| Deutsche Formate (Komma, Datum), strukturierte Fehlermeldungen mit Feldbezug | ✅ |
+| OpenAPI-Dokumentation | ✅ `docs/openapi.yaml` (45 Pfade) |
+
+### Bewusste Abweichungen
+
+- **Detailrouten mit Query-Parameter** (`/member/rounds/view?id=…`) statt `/member/rounds/[id]`: Die Webspace-Edition
+  ist ein statischer Export ohne dynamische Routen; beide Editionen teilen sich dieselben Seiten.
+- **Webspace-Edition rechnet im Browser** (gleiche Service-Schicht wie der Node-Server, gekapselt im API-Adapter):
+  PHP kann die TypeScript-Engine nicht ausführen. Autorisierung, Datentrennung, Strukturprüfung, Revisionen und
+  Audit bleiben auf dem Server.
+- **Mailversand** muss auf dem Zielsystem eingerichtet werden (SMTP empfohlen); ohne Mail legt der Admin Konten mit
+  temporärem Passwort an.
+
+## Version 1 – WHS-Engine und Golfplatzdaten (Spezifikation §79)
 
 | Prüfpunkt | Status | Nachweis |
 |---|---|---|
@@ -41,8 +98,8 @@ in `<IfModule>` gekapselt, und `install.php` schaltet bei HTTP 500 automatisch a
 | 9-Loch-Ratings nie aus 18-Loch abgeleitet | ✅ | `courses.test.ts`, `nineHole.test.ts`, `partialRound.test.ts` |
 | Golfplätze Bayern vollständig erfasst / Status dokumentiert | ⚠️ Status dokumentiert, **1 Anlage** (Ottobeuren, unverifiziert) | Egress-Sperre in der Build-Umgebung, siehe `DATENSTATUS-BAYERN.md` |
 | alle Datenquellen gespeichert | ✅ | `rating_sets.source_type/source_url/checked_at/verified/confidence`, `change_log` |
-| mobile Scorekarteneingabe funktioniert | ✅ | Browser-Test 390 px (Loch für Loch, Schnellauswahl, NDB-Anzeige) |
-| CSV-Import funktioniert | ✅ | `courses.test.ts`, `repository.test.ts`, Browser-Test Admin-Import und Runden-CSV |
+| mobile Scorekarteneingabe funktioniert | ✅ | E2E C und J (390 px, Loch für Loch, Schnellauswahl) |
+| CSV-Import funktioniert | ✅ | `courses.test.ts`, `repository.test.ts`, E2E G (Admin-Import), `tests/member` (Runden-CSV) |
 | alle Unit Tests erfolgreich | ✅ | `npm test` |
 
 ## Test-Orakel (§66)
@@ -74,5 +131,8 @@ bestätigt werden:
 - `npm run build && npm start` bzw. `node .next/standalone/server.js` (getestet).
 - `Dockerfile` und `docker-compose.yml` (App + PostgreSQL 16) liegen bei; ein Docker-Build war in der Build-Umgebung
   mangels Docker-Daemon nicht möglich. Das Image entspricht dem getesteten Standalone-Aufbau.
-- Für Produktion `ADMIN_PASSWORD` setzen (sonst ist der Admin-Bereich gesperrt).
+- Für Produktion `APP_URL`, `SESSION_SECRET`, `ADMIN_EMAIL`/`ADMIN_PASSWORD` (erster Super-Admin) und `SMTP_URL` setzen.
 - Klassischer PHP-Webspace: `npm run build:webspace` → ZIP hochladen → `install.php` (siehe [`WEBSPACE.md`](WEBSPACE.md)).
+- Nicht geprüft: echter Apache mit `.htaccess`/`mod_rewrite` (in der Build-Umgebung simuliert ein PHP-Router die
+  Weiterleitung auf `gate.php`); Docker-Build (kein Docker-Daemon). Die Selbstprüfung in `install.php` zeigt an, ob der
+  Mitgliederbereich auf dem Webspace wirklich vorab geschützt ist.

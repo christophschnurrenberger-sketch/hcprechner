@@ -15,6 +15,11 @@ const eslintConfig = defineConfig([
     // Webspace-Paket (npm run build:webspace)
     "release/**",
   ]),
+  // Browser-Abläufe (Node-Skript, CommonJS)
+  {
+    files: ["e2e/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;
