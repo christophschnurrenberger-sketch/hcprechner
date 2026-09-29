@@ -1,6 +1,6 @@
 {
-  "name": "hcprechner",
-  "version": "0.1.0",
+  "name": "golf-hcp-rechner-whs-2026",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,10 +9,11 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "import:bavaria": "tsx --tsconfig tsconfig.json scripts/import-bavaria-courses.ts",
     "db:generate": "drizzle-kit generate",
-    "db:check": "tsx --tsconfig tsconfig.json scripts/db-check.ts"
+    "db:check": "tsx --tsconfig tsconfig.json scripts/db-check.ts",
+    "start:standalone": "node .next/standalone/server.js"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -45,5 +46,6 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.2"
-  }
+  },
+  "description": "Golf HCP Rechner – WHS 2026 (DGV) mit Golfplatzdatenbank Bayern"
 }

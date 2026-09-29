@@ -1,0 +1,29 @@
+# Lokaler Betrieb mit PostgreSQL:  docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hcp
+      POSTGRES_PASSWORD: hcp
+      POSTGRES_DB: hcprechner
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hcp -d hcprechner"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://hcp:hcp@db:5432/hcprechner
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD setzen (z. B. in .env)}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

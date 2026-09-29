@@ -1,0 +1,8 @@
+node_modules
+.next
+.data
+data/raw
+.git
+*.log
+.env*
+!.env.example

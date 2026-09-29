@@ -61,7 +61,7 @@ export function ScoringRecordView() {
                           className={cn("flex items-center gap-3 px-5 py-2 text-sm hover:bg-surface-2", w.counted && "bg-brand-soft/70")}
                         >
                           <span className="tabular w-6 text-right text-xs text-ink-3">{i + 1}.</span>
-                          <span className={cn("tabular w-14 font-semibold", w.counted ? "text-brand" : "text-ink")}>SD {formatDecimal(w.adjustedSD)}</span>
+                          <span className={cn("tabular w-20 shrink-0 whitespace-nowrap font-semibold", w.counted ? "text-brand" : "text-ink")}>SD {formatDecimal(w.adjustedSD)}</span>
                           <span className="min-w-0 flex-1 truncate text-xs text-ink-3">
                             {formatDate(w.date)} · {round?.title}
                           </span>
