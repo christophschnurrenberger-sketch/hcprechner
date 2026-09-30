@@ -8,6 +8,8 @@ import { Segmented } from "@/components/ui";
 
 const axisTick = { fontSize: 11, fill: "var(--ink-3)" };
 const tooltipStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 };
+/** Datenpunkte in Serienfarbe mit Ring in Hintergrundfarbe (≥ 8 px, auch einzelne Werte sichtbar). */
+const dotFor = (color: string) => ({ r: 4, fill: color, strokeWidth: 2, stroke: "var(--chart-surface)" });
 
 type Row = PerformancePoint & { i: number };
 
@@ -35,7 +37,7 @@ export function ScoreChart({ history, height = 200 }: { history: PerformancePoin
               <XAxis dataKey="i" tickFormatter={(i: number) => formatDateShort(data[i]?.date)} tick={axisTick} axisLine={false} tickLine={false} minTickGap={24} />
               <YAxis domain={["dataMin - 2", "dataMax + 2"]} tick={axisTick} axisLine={false} tickLine={false} width={36} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} labelFormatter={(i) => `${formatDate(data[Number(i)]?.date)} · ${data[Number(i)]?.courseName ?? ""}`} formatter={(v) => [String(v), "Schläge"]} />
-              <Line type="monotone" dataKey="grossScore" stroke="var(--series-current)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: "var(--chart-surface)" }} activeDot={{ r: 6 }} isAnimationActive={false} />
+              <Line type="monotone" dataKey="grossScore" stroke="var(--series-current)" strokeWidth={2} dot={dotFor("var(--series-current)")} activeDot={{ r: 6 }} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -55,11 +57,11 @@ export function AccuracyChart({ history, height = 220 }: { history: PerformanceP
         <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis dataKey="i" tickFormatter={(i: number) => formatDateShort(data[i]?.date)} tick={axisTick} axisLine={false} tickLine={false} minTickGap={24} />
-          <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={axisTick} axisLine={false} tickLine={false} width={40} tickFormatter={(v: number) => `${v} %`} />
+          <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={axisTick} axisLine={false} tickLine={false} width={48} tickFormatter={(v: number) => `${v}\u00a0%`} />
           <Tooltip contentStyle={tooltipStyle} labelFormatter={(i) => `${formatDate(data[Number(i)]?.date)} · ${data[Number(i)]?.courseName ?? ""}`} formatter={(v, name) => [v === null || v === undefined ? "–" : `${formatDecimal(Number(v), 0)} %`, name]} />
           <Legend verticalAlign="top" height={28} iconType="plainline" wrapperStyle={{ fontSize: 12, color: "var(--ink-2)" }} />
-          <Line name="GIR" type="monotone" dataKey="girPercentage" stroke="var(--series-current)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: "var(--chart-surface)" }} activeDot={{ r: 6 }} connectNulls isAnimationActive={false} />
-          <Line name="Fairways" type="monotone" dataKey="firPercentage" stroke="var(--series-low)" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 4, strokeWidth: 2, stroke: "var(--chart-surface)" }} activeDot={{ r: 6 }} connectNulls isAnimationActive={false} />
+          <Line name="GIR" type="monotone" dataKey="girPercentage" stroke="var(--series-current)" strokeWidth={2} dot={dotFor("var(--series-current)")} activeDot={{ r: 6 }} connectNulls isAnimationActive={false} />
+          <Line name="Fairways" type="monotone" dataKey="firPercentage" stroke="var(--series-low)" strokeWidth={2} strokeDasharray="6 4" dot={dotFor("var(--series-low)")} activeDot={{ r: 6 }} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -78,7 +80,7 @@ export function PuttingChart({ history, height = 200 }: { history: PerformancePo
           <XAxis dataKey="i" tickFormatter={(i: number) => formatDateShort(data[i]?.date)} tick={axisTick} axisLine={false} tickLine={false} minTickGap={24} />
           <YAxis domain={[1, 3]} tick={axisTick} axisLine={false} tickLine={false} width={36} tickFormatter={(v: number) => formatDecimal(v, 1)} />
           <Tooltip contentStyle={tooltipStyle} labelFormatter={(i) => `${formatDate(data[Number(i)]?.date)} · ${data[Number(i)]?.courseName ?? ""}`} formatter={(v, _n, item) => [`${formatDecimal(Number(v), 2)} (${(item.payload as Row).threePutts} Drei-Putts)`, "Putts pro Loch"]} />
-          <Line type="monotone" dataKey="puttsPerHole" stroke="var(--series-current)" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, stroke: "var(--chart-surface)" }} activeDot={{ r: 6 }} connectNulls isAnimationActive={false} />
+          <Line type="monotone" dataKey="puttsPerHole" stroke="var(--series-current)" strokeWidth={2} dot={dotFor("var(--series-current)")} activeDot={{ r: 6 }} connectNulls isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
