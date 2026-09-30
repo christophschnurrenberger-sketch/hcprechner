@@ -12,13 +12,27 @@
  */
 import { z } from "zod";
 import type { CsvImportPlan, ParsedCsvRow } from "./csv";
+import { mergeGreenUpdates, type GreenUpdate } from "./geo";
+import type { GreenCsvPlan } from "./greenCsv";
 import { normalizeCourseName, slugify } from "./normalize";
-import type { CourseDto, FacilityType, HoleDto, LayoutDto, LayoutType, RatingSetDto } from "./types";
-import { courseInputSchema, holeInputSchema, layoutInputSchema, ratingSetInputSchema, type RatingSetInput } from "./validation";
+import type { CourseDto, FacilityType, GeoSource, HoleDto, LayoutDto, LayoutType, RatingSetDto } from "./types";
+import {
+  courseInputSchema,
+  geoPointSchema,
+  greenInputSchema,
+  greenPolygonSchema,
+  holeInputSchema,
+  layoutInputSchema,
+  pinPositionSchema,
+  ratingSetInputSchema,
+  teePositionSchema,
+  type RatingSetInput,
+} from "./validation";
 import type { Gender, NineSide } from "@/lib/whs/types";
 
 export const DATASET_FORMAT = "golf-hcp-rechner/courses";
-export const DATASET_SCHEMA_VERSION = 1;
+/** 2: GPS-Geodaten je Loch (layouts[].holeGeo). Ältere Datensätze (1) werden ohne Änderung gelesen. */
+export const DATASET_SCHEMA_VERSION = 2;
 /** Anzahl der aufbewahrten Einträge im Änderungsprotokoll. */
 export const CHANGE_LOG_LIMIT = 1000;
 export const IMPORT_RUN_LIMIT = 50;
@@ -104,6 +118,21 @@ const holeDtoSchema = z.object({
   gender: z.enum(["M", "F"]).nullable(),
 });
 
+const holeGeoDtoSchema = z.object({
+  layoutId: z.string().min(1),
+  holeNumber: z.number().int().min(1).max(36),
+  green: z.object({
+    front: geoPointSchema.nullable(),
+    center: geoPointSchema.nullable(),
+    back: geoPointSchema.nullable(),
+    polygon: greenPolygonSchema.nullable().default(null),
+    pin: pinPositionSchema.nullable().default(null),
+  }),
+  tees: z.array(teePositionSchema).default([]),
+  source: z.enum(["MANUAL", "DEVICE_GPS", "CSV_IMPORT", "MAP"]).nullable().default(null),
+  updatedAt: z.string().nullable().default(null),
+});
+
 const layoutDtoSchema = z.object({
   id: z.string().min(1),
   courseId: z.string().min(1),
@@ -115,6 +144,7 @@ const layoutDtoSchema = z.object({
   notes: nullableString,
   ratingSets: z.array(ratingSetDtoSchema),
   holes: z.array(holeDtoSchema),
+  holeGeo: z.array(holeGeoDtoSchema).default([]),
 });
 
 const courseDtoSchema = z.object({
@@ -227,7 +257,7 @@ function diff(before: object, after: object) {
   const a = before as Record<string, unknown>;
   const b = after as Record<string, unknown>;
   for (const key of Object.keys(b)) {
-    if (key === "layouts" || key === "ratingSets" || key === "holes") continue;
+    if (key === "layouts" || key === "ratingSets" || key === "holes" || key === "holeGeo") continue;
     if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) changes[key] = { from: a[key] ?? null, to: b[key] ?? null };
   }
   return changes;
@@ -362,7 +392,7 @@ export function createLayout(ds: CourseDataset, raw: unknown, options?: Operatio
   if (course.facilityType === "DRIVING_RANGE") {
     throw new Error("Eine Driving Range ist kein handicap-relevanter Golfplatz – keine Plätze/Layouts möglich");
   }
-  const layout: LayoutDto = { id: ctx.id(), ...input, type: input.type as LayoutType, ratingSets: [], holes: [] };
+  const layout: LayoutDto = { id: ctx.id(), ...input, type: input.type as LayoutType, ratingSets: [], holes: [], holeGeo: [] };
   let next = mapCourse(ds, course.id, (c) => ({ ...c, layouts: [...c.layouts, layout].sort((a, b) => a.name.localeCompare(b.name, "de")) }));
   next = log(next, ctx, { entityType: "layout", entityId: layout.id, action: "CREATE", changes: input });
   return { dataset: next, layout };
@@ -386,6 +416,23 @@ export function replaceHoles(ds: CourseDataset, layoutId: string, raw: unknown[]
     .sort((a, b) => a.holeNumber - b.holeNumber);
   const next = mapLayout(ds, layoutId, (l) => ({ ...l, holes }));
   return log(next, ctx, { entityType: "layout", entityId: layoutId, action: "REPLACE_HOLES", changes: { count: holes.length } });
+}
+
+/**
+ * GPS-Grünkoordinaten (Front/Mitte/Back) für Löcher eines Platzes setzen. Lochdaten, Ratings, Grünfläche,
+ * Fahne und Abschlagpositionen bleiben unverändert; ungültige Koordinaten werden abgelehnt.
+ */
+export function setGreenCoordinates(ds: CourseDataset, layoutId: string, raw: unknown[], options?: OperationContext): CourseDataset {
+  const ctx = new Ctx(options);
+  const updates: GreenUpdate[] = raw.map((g) => {
+    const v = greenInputSchema.parse(g);
+    return { holeNumber: v.holeNumber, front: v.front, center: v.center, back: v.back, source: (v.source as GeoSource | null) ?? null };
+  });
+  const { layout } = findLayout(ds, layoutId);
+  const merged = mergeGreenUpdates(layout, updates, ctx.now.toISOString());
+  if (merged.changed.length === 0 && merged.removed.length === 0) return ds;
+  const next = mapLayout(ds, layoutId, (l) => ({ ...l, holeGeo: merged.holeGeo }));
+  return log(next, ctx, { entityType: "layout", entityId: layoutId, action: "SET_GREENS", changes: { changed: merged.changed, removed: merged.removed } });
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +623,35 @@ export function applyCsvPlan(ds: CourseDataset, plan: CsvImportPlan, options?: O
     }
   }
   next = recordImportRun(next, "CSV", "APPLIED", result, opts);
+  return { dataset: next, result };
+}
+
+export interface GreenCsvApplyResult {
+  updatedHoles: number;
+  layouts: number;
+  skipped: number;
+}
+
+/** GPS-CSV nach Vorschau und Bestätigung übernehmen (nur Grünkoordinaten – Ratings und Lochdaten bleiben unverändert). */
+export function applyGreenCsvPlan(ds: CourseDataset, plan: GreenCsvPlan, options?: OperationContext): { dataset: CourseDataset; result: GreenCsvApplyResult } {
+  const opts: OperationContext = { ...options, source: "CSV_IMPORT" };
+  const byLayout = new Map<string, GreenUpdate[]>();
+  let skipped = 0;
+  for (const row of plan.rows) {
+    if (row.action === "INVALID" || row.action === "UNCHANGED" || !row.update || !row.layoutId) {
+      skipped += 1;
+      continue;
+    }
+    byLayout.set(row.layoutId, [...(byLayout.get(row.layoutId) ?? []), row.update]);
+  }
+  let next = ds;
+  let updatedHoles = 0;
+  for (const [layoutId, updates] of byLayout) {
+    next = setGreenCoordinates(next, layoutId, updates, opts);
+    updatedHoles += updates.length;
+  }
+  const result: GreenCsvApplyResult = { updatedHoles, layouts: byLayout.size, skipped };
+  next = recordImportRun(next, "CSV_GPS", "APPLIED", result, opts);
   return { dataset: next, result };
 }
 

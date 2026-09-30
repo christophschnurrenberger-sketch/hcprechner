@@ -1,6 +1,6 @@
 # Datenstatus Golfplätze Bayern
 
-Stand: 29.09.2026
+Stand: 30.09.2026
 
 ## Kurzfassung
 
@@ -9,6 +9,7 @@ Stand: 29.09.2026
 | Anlagen in den mitgelieferten Startdaten (`data/seed/golfplaetze-bayern.json`) | **1** (Allgäuer Golf- und Landclub Ottobeuren) |
 | Rating-Sets | **2** (18 Loch: Gelb Herren, Rot Damen) – **nicht verifiziert** |
 | Verifizierte Rating-Sets | **0** |
+| GPS-Grünkoordinaten (seit 2.4) | **0** Löcher – keine mitgeliefert |
 | Importer / CSV-Import / Admin | einsatzbereit, getestet |
 
 ## Allgäuer Golf- und Landclub Ottobeuren
@@ -22,7 +23,8 @@ Stand: 29.09.2026
   Build-Umgebung **nicht abrufbar** (Egress-Sperre); die Werte stammen aus übereinstimmenden Suchergebnissen
   (Auszüge dieser Club-Seite) vom 29.09.2026. Deshalb `verified = false`, Vertrauen MEDIUM, kein Prüfdatum.
 - **Nicht erfasst** (nicht verfügbar, nichts geschätzt): Par und Handicap (Stroke Index) je Loch, Längen je Loch,
-  weitere Abschläge (z. B. Weiß/Blau/Orange), 9-Loch-Ratings (Front/Back Nine), Gültigkeitszeitraum, Koordinaten.
+  weitere Abschläge (z. B. Weiß/Blau/Orange), 9-Loch-Ratings (Front/Back Nine), Gültigkeitszeitraum, Koordinaten
+  der Anlage und GPS-Koordinaten der Grüns.
   Diese stehen auf der Scorekarte bzw. im Birdiebook des Clubs.
 - **9-Loch-Ratings:** Der Club veröffentlicht auf „Scorekarte & Vorgabe“ Vorgabentabellen für Loch 1–18, 1–9 und
   10–18 (sowie Grün 1–9) – so die Suchergebnisse vom 30.09.2026. Die Tabellen selbst waren aus der Build-Umgebung
@@ -39,6 +41,24 @@ Stand: 29.09.2026
 Die Startdaten werden mit der Webspace-Edition ausgeliefert (`golfplaetze-daten.json`); bestehende Installationen
 übernehmen fehlende Anlagen im Admin-Bereich über „Mitgelieferte Golfplatzdaten“. Node-Edition: `npm run db:seed`
 oder dieselbe Karte im Admin-Bereich.
+
+## GPS-Grünkoordinaten
+
+Für die Entfernung zum Grün (Version 2.4, siehe [`GPS-DISTANZ.md`](GPS-DISTANZ.md)) braucht jedes Loch die
+Koordinate der Grünmitte, optional auch Front und Back.
+
+- **Mitgeliefert: keine.** Aus der Build-Umgebung waren weder Luftbilder noch OpenStreetMap noch Club-Daten
+  abrufbar. Koordinaten aus dem Gedächtnis oder geschätzt würden die Grundregel „keine erfundenen Platzdaten“
+  verletzen.
+- Ohne Grün-Koordinaten funktioniert die Scorecard wie bisher; der Schnellzugriff zur Entfernung erscheint dann
+  nicht.
+- Erfassung im Admin-Bereich: Golfplätze → Anlage → Platz → „GPS-Daten“.
+  - Koordinaten eintragen, oder am Grün stehend „GPS-Position verwenden“.
+  - Alternativ per CSV (Admin → Import → GPS-Grünkoordinaten; Vorlage über den GPS-Export).
+- Quellen: eigene Messung auf dem Platz (am genauesten), Luftbild oder OpenStreetMap. Bei OpenStreetMap gilt die
+  Lizenz ODbL mit Namensnennung.
+- Stand je Anlage: Spalte „Green GPS“ in der Anlagenliste („18/18 ✓“, „11/18 ⚠“, „–“) und Datenqualität
+  (`GREEN_GPS_INCOMPLETE`).
 
 ## Warum (noch) so wenige Anlagen?
 

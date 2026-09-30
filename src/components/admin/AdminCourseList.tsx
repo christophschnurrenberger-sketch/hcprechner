@@ -9,7 +9,7 @@ import { adminCoursePath } from "@/lib/courses/paths";
 import { regionByKey } from "@/lib/courses/regions";
 import { Badge, ButtonLink, Input, PageHeader, Select } from "@/components/ui";
 
-type Filter = "" | "no-rating" | "unverified" | "inactive";
+type Filter = "" | "no-rating" | "unverified" | "inactive" | "gps-missing";
 
 export function AdminCourseList({ rows }: { rows: AdminCourseRow[] }) {
   const [q, setQ] = useState("");
@@ -21,6 +21,7 @@ export function AdminCourseList({ rows }: { rows: AdminCourseRow[] }) {
         if (filter === "no-rating" && c.hasVerifiedRating) return false;
         if (filter === "unverified" && c.verified) return false;
         if (filter === "inactive" && c.active) return false;
+        if (filter === "gps-missing" && (c.greenGps.level === "COMPLETE" || c.facilityType === "DRIVING_RANGE")) return false;
         return true;
       }),
     [rows, q, filter],
@@ -43,6 +44,7 @@ export function AdminCourseList({ rows }: { rows: AdminCourseRow[] }) {
           <option value="no-rating">ohne verifiziertes Rating</option>
           <option value="unverified">Stammdaten nicht verifiziert</option>
           <option value="inactive">inaktiv</option>
+          <option value="gps-missing">GPS-Gründaten fehlen</option>
         </Select>
       </div>
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -55,6 +57,7 @@ export function AdminCourseList({ rows }: { rows: AdminCourseRow[] }) {
               <th className="px-3 py-2 font-medium">Typ</th>
               <th className="px-3 py-2 text-right font-medium">Plätze</th>
               <th className="px-3 py-2 text-right font-medium">Ratings (verif.)</th>
+              <th className="px-3 py-2 font-medium">Green GPS</th>
               <th className="px-3 py-2 font-medium">Status</th>
             </tr>
           </thead>
@@ -72,6 +75,15 @@ export function AdminCourseList({ rows }: { rows: AdminCourseRow[] }) {
                 <td className="tabular px-3 py-2 text-right">{c.layouts}</td>
                 <td className="tabular px-3 py-2 text-right">
                   {c.ratings} ({c.verifiedRatings})
+                </td>
+                <td className="tabular px-3 py-2" data-green-gps={c.greenGps.level}>
+                  {c.greenGps.level === "NONE" ? (
+                    <span className="text-ink-3">–</span>
+                  ) : (
+                    <Badge tone={c.greenGps.level === "COMPLETE" ? "good" : "warning"}>
+                      {c.greenGps.withCenter}/{c.greenGps.holes} {c.greenGps.level === "COMPLETE" ? "✓" : "⚠"}
+                    </Badge>
+                  )}
                 </td>
                 <td className="space-x-1 px-3 py-2">
                   {!c.active && <Badge>inaktiv</Badge>}

@@ -93,6 +93,7 @@ const course: CourseDto = {
         rating({ gender: "F", teeColor: "Rot", courseRating: 73.5, slopeRating: 128, verified: false }),
       ],
       holes: PARS.map((par, i) => ({ id: `h${i}`, layoutId: LAYOUT_ID, holeNumber: i + 1, par, strokeIndex: ((i * 7) % 18) + 1, lengthMen: null, lengthWomen: null, teeColor: null, gender: null })),
+      holeGeo: [],
     },
   ],
 };

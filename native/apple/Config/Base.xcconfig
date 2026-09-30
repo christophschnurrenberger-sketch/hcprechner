@@ -1,0 +1,12 @@
+// Einstellungen für die eigene Installation (nicht im Code fest einprogrammiert).
+//
+// Adresse der Installation, z. B. https://golf.example.de/hcp – in xcconfig-Dateien beginnt „//“ einen Kommentar,
+// deshalb „https:/$()/…“ schreiben. Leer lassen: Die App fragt beim ersten Start nach der Adresse.
+HCP_BASE_URL =
+// Beispiel: HCP_BASE_URL = https:/$()/golf.example.de/hcp
+
+// Bundle-ID (eigene Domain) und Apple-Developer-Team
+HCP_BUNDLE_ID = de.example.golfhcp
+DEVELOPMENT_TEAM =
+CODE_SIGN_STYLE = Automatic
+SWIFT_VERSION = 5.9

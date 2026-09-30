@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { BAVARIAN_REGIONS } from "./regions";
-import { FACILITY_TYPES, LAYOUT_TYPES, SOURCE_TYPES } from "./types";
+import { FACILITY_TYPES, GEO_SOURCES, LAYOUT_TYPES, SOURCE_TYPES } from "./types";
 
 const optionalText = z
   .string()
@@ -139,3 +139,34 @@ export const holeInputSchema = z.object({
     .transform((v) => v ?? null),
 });
 export type HoleInput = z.infer<typeof holeInputSchema>;
+
+// ---------------------------------------------------------------------------
+// GPS-Geodaten (Grün je Loch, unabhängig vom Abschlag)
+// ---------------------------------------------------------------------------
+
+/** WGS-84-Punkt: Breite −90…90, Länge −180…180 – ungültige Werte werden nie gespeichert. */
+export const geoPointSchema = z.object({
+  latitude: z.number().min(-90, "Breite muss zwischen −90 und 90 liegen").max(90, "Breite muss zwischen −90 und 90 liegen"),
+  longitude: z.number().min(-180, "Länge muss zwischen −180 und 180 liegen").max(180, "Länge muss zwischen −180 und 180 liegen"),
+});
+
+/** GeoJSON-Polygon der Grünfläche (vorbereitet): Ringe aus [Länge, Breite], geschlossen (erster = letzter Punkt). */
+export const greenPolygonSchema = z
+  .object({
+    type: z.literal("Polygon"),
+    coordinates: z.array(z.array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])).min(4)).min(1),
+  })
+  .refine((p) => p.coordinates.every((ring) => ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]), "Polygon muss geschlossen sein");
+
+export const pinPositionSchema = geoPointSchema.extend({ setAt: z.string().min(1) });
+export const teePositionSchema = geoPointSchema.extend({ teeColor: z.string().trim().min(1) });
+
+/** Grün-Koordinaten eines Lochs (Admin-Formular, CSV-Import). */
+export const greenInputSchema = z.object({
+  holeNumber: z.coerce.number().int().min(1).max(36),
+  front: geoPointSchema.nullable().default(null),
+  center: geoPointSchema.nullable().default(null),
+  back: geoPointSchema.nullable().default(null),
+  source: z.enum(GEO_SOURCES as unknown as [string, ...string[]]).nullable().default(null),
+});
+export type GreenInput = z.infer<typeof greenInputSchema>;

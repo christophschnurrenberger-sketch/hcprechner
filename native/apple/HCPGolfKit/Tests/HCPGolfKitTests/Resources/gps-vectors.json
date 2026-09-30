@@ -1,0 +1,1072 @@
+{
+  "_comment": "Gemeinsame Testwerte für die DistanceEngine (TypeScript: tests/gps, Swift: native/apple HCPGolfKit). Referenzentfernungen mit GeographicLib (Karney, WGS-84) berechnet. Fiktive Punkte – keine echten Grünkoordinaten.",
+  "toleranceMeters": 0.001,
+  "distances": [
+    {
+      "name": "Vincenty 1975: Flinders Peak – Buninyong",
+      "a": {
+        "latitude": -37.95103341666667,
+        "longitude": 144.42486788888888
+      },
+      "b": {
+        "latitude": -37.65282113888889,
+        "longitude": 143.92649552777777
+      },
+      "meters": 54972.2711
+    },
+    {
+      "name": "Golfmaßstab: 137 m (fiktive Punkte bei 47,94° N)",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.941157826,
+        "longitude": 10.31062718
+      },
+      "meters": 137.0
+    },
+    {
+      "name": "Golfmaßstab: 151 m",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.94057392,
+        "longitude": 10.311831758
+      },
+      "meters": 151.0
+    },
+    {
+      "name": "Golfmaßstab: 420 m",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.936222652,
+        "longitude": 10.31
+      },
+      "meters": 420.0
+    },
+    {
+      "name": "Golfmaßstab: 72 m",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.94032377,
+        "longitude": 10.309165404
+      },
+      "meters": 72.0
+    },
+    {
+      "name": "Kurz: 5 m",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.940031797,
+        "longitude": 10.310047322
+      },
+      "meters": 4.9999
+    },
+    {
+      "name": "Kurz: 1 m",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.940008994,
+        "longitude": 10.31
+      },
+      "meters": 1.0
+    },
+    {
+      "name": "Äquator 1 km Ost",
+      "a": {
+        "latitude": 0.0,
+        "longitude": 0.0
+      },
+      "b": {
+        "latitude": 0.0,
+        "longitude": 0.008983153
+      },
+      "meters": 1000.0
+    },
+    {
+      "name": "Hoher Norden 300 m (70° N)",
+      "a": {
+        "latitude": 70.0,
+        "longitude": 25.0
+      },
+      "b": {
+        "latitude": 70.002648228,
+        "longitude": 25.001364383
+      },
+      "meters": 300.0
+    },
+    {
+      "name": "Datumsgrenze",
+      "a": {
+        "latitude": -16.5,
+        "longitude": 179.9995
+      },
+      "b": {
+        "latitude": -16.5,
+        "longitude": -179.9995
+      },
+      "meters": 106.7642
+    },
+    {
+      "name": "Über den Äquator",
+      "a": {
+        "latitude": -0.0005,
+        "longitude": 36.8
+      },
+      "b": {
+        "latitude": 0.0005,
+        "longitude": 36.8
+      },
+      "meters": 110.5743
+    },
+    {
+      "name": "Identische Punkte",
+      "a": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "b": {
+        "latitude": 47.94,
+        "longitude": 10.31
+      },
+      "meters": 0
+    }
+  ],
+  "format": [
+    {
+      "meters": 147.3,
+      "accuracy": 3,
+      "unit": "M",
+      "text": "147 m",
+      "approx": false,
+      "spoken": "147 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 147.3,
+      "accuracy": 10,
+      "unit": "M",
+      "text": "147 m",
+      "approx": false,
+      "spoken": "147 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 147.3,
+      "accuracy": 15,
+      "unit": "M",
+      "text": "147 m",
+      "approx": false,
+      "spoken": "147 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 147.3,
+      "accuracy": 25,
+      "unit": "M",
+      "text": "≈ 145 m",
+      "approx": true,
+      "spoken": "ungefähr 145 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 147.3,
+      "accuracy": 35,
+      "unit": "M",
+      "text": "≈ 150 m",
+      "approx": true,
+      "spoken": "ungefähr 150 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 147.3,
+      "accuracy": 50,
+      "unit": "M",
+      "text": "≈ 150 m",
+      "approx": true,
+      "spoken": "ungefähr 150 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 419.7,
+      "accuracy": 4,
+      "unit": "M",
+      "text": "420 m",
+      "approx": false,
+      "spoken": "420 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 0.3,
+      "accuracy": 3,
+      "unit": "M",
+      "text": "1 m",
+      "approx": false,
+      "spoken": "1 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": null,
+      "accuracy": 5,
+      "unit": "M",
+      "text": "— m",
+      "approx": false,
+      "spoken": "Entfernung nicht verfügbar"
+    },
+    {
+      "meters": 2400,
+      "accuracy": 5,
+      "unit": "M",
+      "text": "> 1.500 m",
+      "approx": false,
+      "spoken": "mehr als 1.500 Meter zur Mitte des Grüns"
+    },
+    {
+      "meters": 151,
+      "accuracy": 5,
+      "unit": "YD",
+      "text": "165 yd",
+      "approx": false,
+      "spoken": "165 Yards zur Mitte des Grüns"
+    },
+    {
+      "meters": 137.2,
+      "accuracy": 26,
+      "unit": "YD",
+      "text": "≈ 150 yd",
+      "approx": true,
+      "spoken": "ungefähr 150 Yards zur Mitte des Grüns"
+    }
+  ],
+  "gpsStatus": [
+    {
+      "accuracy": 3,
+      "label": "GPS",
+      "detail": "±3 m",
+      "quality": "good"
+    },
+    {
+      "accuracy": 10,
+      "label": "GPS",
+      "detail": "±10 m",
+      "quality": "good"
+    },
+    {
+      "accuracy": 25,
+      "label": "GPS ungenau",
+      "detail": "±25 m",
+      "quality": "poor"
+    },
+    {
+      "accuracy": 50,
+      "label": "GPS ungenau",
+      "detail": "±50 m",
+      "quality": "poor"
+    }
+  ],
+  "watch": [
+    {
+      "name": "Aktuelle Entfernung",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Alter wird angezeigt (Herzschläge halten die Verbindung)",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        },
+        {
+          "atMs": 5000,
+          "message": {
+            "v": 1,
+            "type": "heartbeat",
+            "epoch": "e1",
+            "seq": 2,
+            "sentAt": 1760000007
+          }
+        },
+        {
+          "atMs": 10000,
+          "message": {
+            "v": 1,
+            "type": "heartbeat",
+            "epoch": "e1",
+            "seq": 3,
+            "sentAt": 1760000012
+          }
+        }
+      ],
+      "nowMs": 14000,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": "vor 0:16 min",
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Verbindung verloren – letzte Entfernung nicht aktuell",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        }
+      ],
+      "nowMs": 20000,
+      "expected": {
+        "kind": "CONNECTION_LOST",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": "vor 0:22 min",
+        "notice": "Verbindung verloren",
+        "dim": true,
+        "rows": []
+      }
+    },
+    {
+      "name": "GPS-Daten veraltet",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000070,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": "vor 1:11 min",
+        "notice": "GPS-Daten veraltet",
+        "dim": true,
+        "rows": []
+      }
+    },
+    {
+      "name": "Keine aktive Runde",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": false,
+              "hole": 7,
+              "par": 4,
+              "distance": null,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": null
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "NO_ROUND",
+        "hole": null,
+        "par": null,
+        "distance": null,
+        "approx": false,
+        "target": "MITTE",
+        "gps": "Keine aktive Runde",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "GPS wird ermittelt",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": null,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": null,
+              "status": "acquiring",
+              "noGreen": false,
+              "timestamp": null
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "ACQUIRING",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": null,
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS wird ermittelt…",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Keine GPS-Daten – iPhone prüfen",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": null,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": null,
+              "status": "no_signal",
+              "noGreen": false,
+              "timestamp": null
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "NO_GPS",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": null,
+        "approx": false,
+        "target": "MITTE",
+        "gps": "Keine GPS-Daten",
+        "age": null,
+        "notice": "iPhone prüfen",
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Front / Mitte / Back – Mitte hervorgehoben",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": 142,
+              "center": 151,
+              "back": 163,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": [
+          {
+            "label": "FRONT",
+            "value": "142",
+            "primary": false
+          },
+          {
+            "label": "MITTE",
+            "value": "151",
+            "primary": true
+          },
+          {
+            "label": "BACK",
+            "value": "163",
+            "primary": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "Nie „0 m“",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 0,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "ACQUIRING",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": null,
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "GPS ungenau",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 150,
+              "approx": true,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 28,
+              "status": "poor",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        }
+      ],
+      "nowMs": 1000,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "150",
+        "approx": true,
+        "target": "MITTE",
+        "gps": "GPS ungenau ● ±28 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Synchronisation: iPhone 151 m → 148 m",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        },
+        {
+          "atMs": 1000,
+          "message": {
+            "v": 1,
+            "type": "patch",
+            "epoch": "e1",
+            "seq": 2,
+            "sentAt": 1760000003,
+            "data": {
+              "distance": 148,
+              "timestamp": 1760000003
+            }
+          }
+        }
+      ],
+      "nowMs": 1500,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "148",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Veraltete Nachricht (kleinere Folgenummer) wird verworfen",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 5,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        },
+        {
+          "atMs": 100,
+          "message": {
+            "v": 1,
+            "type": "patch",
+            "epoch": "e1",
+            "seq": 4,
+            "sentAt": 1760000002,
+            "data": {
+              "distance": 999
+            }
+          }
+        }
+      ],
+      "nowMs": 500,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Lochwechsel: keine Entfernung des vorigen Lochs",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 1,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        },
+        {
+          "atMs": 1000,
+          "message": {
+            "v": 1,
+            "type": "patch",
+            "epoch": "e1",
+            "seq": 2,
+            "sentAt": 1760000003,
+            "data": {
+              "hole": 8,
+              "par": 5,
+              "distance": null,
+              "timestamp": null,
+              "front": null,
+              "center": null,
+              "back": null
+            }
+          }
+        }
+      ],
+      "nowMs": 1500,
+      "expected": {
+        "kind": "ACQUIRING",
+        "hole": "LOCH 8",
+        "par": "PAR 5",
+        "distance": null,
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Neuer Sender nach Neustart der App wird übernommen",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 50,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        },
+        {
+          "atMs": 1000,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e2",
+            "seq": 1,
+            "sentAt": 1760000003,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 140,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000003
+            }
+          }
+        }
+      ],
+      "nowMs": 1500,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "140",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    },
+    {
+      "name": "Änderung eines neuen Senders ohne vollständigen Zustand wird ignoriert",
+      "messages": [
+        {
+          "atMs": 0,
+          "message": {
+            "v": 1,
+            "type": "state",
+            "epoch": "e1",
+            "seq": 50,
+            "sentAt": 1760000002,
+            "data": {
+              "roundActive": true,
+              "hole": 7,
+              "par": 4,
+              "distance": 151,
+              "approx": false,
+              "unit": "m",
+              "target": "green_center",
+              "front": null,
+              "center": null,
+              "back": null,
+              "gpsAccuracy": 5,
+              "status": "ok",
+              "noGreen": false,
+              "timestamp": 1760000000
+            }
+          }
+        },
+        {
+          "atMs": 1000,
+          "message": {
+            "v": 1,
+            "type": "patch",
+            "epoch": "e2",
+            "seq": 1,
+            "sentAt": 1760000003,
+            "data": {
+              "distance": 120
+            }
+          }
+        }
+      ],
+      "nowMs": 1500,
+      "expected": {
+        "kind": "DISTANCE",
+        "hole": "LOCH 7",
+        "par": "PAR 4",
+        "distance": "151",
+        "approx": false,
+        "target": "MITTE",
+        "gps": "GPS ● ±5 m",
+        "age": null,
+        "notice": null,
+        "dim": false,
+        "rows": []
+      }
+    }
+  ]
+}

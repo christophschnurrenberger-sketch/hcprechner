@@ -3,11 +3,13 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { planCsvImport } from "@/lib/courses/csv";
-import { actionFailure, actionOk, csvTextFromForm, formToObject, parseHolesForm } from "@/lib/courses/adminForm";
+import { planGreenCsvImport } from "@/lib/courses/greenCsv";
+import { actionFailure, actionOk, csvTextFromForm, formToObject, parseGreensForm, parseHolesForm } from "@/lib/courses/adminForm";
 import { courseAdminApi } from "@/lib/courses/adminApi";
 import { invalidateCourseDataset } from "@/lib/courses/client";
 import {
   applyCsvPlan,
+  applyGreenCsvPlan,
   createCourse,
   createLayout,
   createRatingSet,
@@ -15,6 +17,7 @@ import {
   mergeSeedCourses,
   parseDataset,
   replaceHoles,
+  setGreenCoordinates,
   setRatingSetActive,
   setRatingSetVerified,
   updateCourse,
@@ -106,6 +109,18 @@ function createBackend(commit: Commit, current: () => CourseDataset, notify: (te
         return actionFailure(error);
       }
     },
+    async saveGreens(_prev, fd) {
+      try {
+        const { layoutId, greens } = parseGreensForm(fd);
+        // unverändert → nichts veröffentlichen
+        if (setGreenCoordinates(current(), layoutId, greens, ops) === current()) return actionOk("Keine Änderungen.");
+        await commit((ds) => ({ dataset: setGreenCoordinates(ds, layoutId, greens, ops), value: null }));
+        const withCenter = greens.filter((g) => g.center).length;
+        return actionOk(`GPS-Daten gespeichert (${withCenter}/${greens.length} Löcher mit Grünmitte).`);
+      } catch (error) {
+        return actionFailure(error);
+      }
+    },
     toggleRatingActive: voidAction((fd) => commit((ds) => ({ dataset: setRatingSetActive(ds, String(fd.get("id")), fd.get("active") === "true", ops), value: null }))),
     verifyRating: voidAction((fd) =>
       commit((ds) => ({ dataset: setRatingSetVerified(ds, String(fd.get("id")), fd.get("verified") === "true", (fd.get("checkedAt") as string) || null, ops), value: null })),
@@ -125,6 +140,27 @@ function createBackend(commit: Commit, current: () => CourseDataset, notify: (te
         const { plan, result } = await commit((ds) => {
           const p = planCsvImport(text, ds.courses);
           const r = applyCsvPlan(ds, p, { ...ops, source: "CSV_IMPORT" });
+          return { dataset: r.dataset, value: { plan: p, result: r.result } };
+        });
+        return { plan, result, error: null, text: "" };
+      } catch (error) {
+        return { plan: null, result: null, error: error instanceof Error ? error.message : "Fehler", text: "" };
+      }
+    },
+    async previewGreenCsv(_prev, fd) {
+      try {
+        const text = await csvTextFromForm(fd);
+        return { plan: planGreenCsvImport(text, current().courses), result: null, error: null, text };
+      } catch (error) {
+        return { plan: null, result: null, error: error instanceof Error ? error.message : "Fehler", text: "" };
+      }
+    },
+    async applyGreenCsv(_prev, fd) {
+      try {
+        const text = String(fd.get("text") ?? "");
+        const { plan, result } = await commit((ds) => {
+          const p = planGreenCsvImport(text, ds.courses);
+          const r = applyGreenCsvPlan(ds, p, { ...ops, source: "CSV_IMPORT" });
           return { dataset: r.dataset, value: { plan: p, result: r.result } };
         });
         return { plan, result, error: null, text: "" };

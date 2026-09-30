@@ -2,7 +2,7 @@
 openapi: 3.1.0
 info:
   title: Golf HCP Rechner – WHS 2026 · API
-  version: 2.3.0
+  version: 2.4.0
   description: 'Schnittstelle zwischen Oberfläche und Backend. Die Oberfläche greift ausschließlich über den API-Adapter
 
     (`src/lib/api/client.ts`) zu.
@@ -1014,6 +1014,87 @@ components:
           type: integer
         pageSize:
           type: integer
+    GeoPoint:
+      type: object
+      description: WGS-84-Koordinate in Dezimalgrad
+      required:
+      - latitude
+      - longitude
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+    GreenGeo:
+      type: object
+      description: Grün eines Lochs – unabhängig vom Abschlag. MVP ist die Mitte; Front/Back optional, Grünfläche und
+        Fahne vorbereitet. Fehlende Werte sind null (nie geschätzt).
+      properties:
+        front:
+          oneOf:
+          - $ref: '#/components/schemas/GeoPoint'
+          - type: 'null'
+        center:
+          oneOf:
+          - $ref: '#/components/schemas/GeoPoint'
+          - type: 'null'
+        back:
+          oneOf:
+          - $ref: '#/components/schemas/GeoPoint'
+          - type: 'null'
+        polygon:
+          type:
+          - object
+          - 'null'
+          description: GeoJSON-Polygon (Ringe aus [Länge, Breite]) – vorbereitet
+        pin:
+          type:
+          - object
+          - 'null'
+          description: Fahnenposition mit Zeitpunkt (latitude, longitude, setAt) – vorbereitet
+    HoleGeo:
+      type: object
+      description: GPS-Geodaten je Platz (Layout) und Loch (seit 2.4)
+      properties:
+        layoutId:
+          type: string
+        holeNumber:
+          type: integer
+          minimum: 1
+          maximum: 36
+        green:
+          $ref: '#/components/schemas/GreenGeo'
+        tees:
+          type: array
+          description: Abschlagpositionen je Farbe (vorbereitet)
+          items:
+            type: object
+            properties:
+              teeColor:
+                type: string
+              latitude:
+                type: number
+              longitude:
+                type: number
+        source:
+          type:
+          - string
+          - 'null'
+          enum:
+          - MANUAL
+          - DEVICE_GPS
+          - CSV_IMPORT
+          - MAP
+          - null
+        updatedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
 paths:
   /api/auth/me:
     get:
@@ -1402,16 +1483,16 @@ paths:
     put:
       tags:
       - me
-      summary: Standard der mobilen Rundeneingabe (Profil → Rundeneingabe)
+      summary: Einstellungen der mobilen Scorecard (Profil → Rundeneingabe, Distanz)
+      description: Mindestens eines der Felder. distanceUnit (seit 2.4) ist die Einheit der Entfernung zum Grün.
       security: *id002
-      x-webspace: POST api/me.php?action=prefs-save mit preferences.roundEntryMode
+      x-webspace: POST api/me.php?action=prefs-save mit preferences.roundEntryMode bzw. preferences.distanceUnit
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              required:
-              - roundEntryMode
+              minProperties: 1
               properties:
                 roundEntryMode:
                   type: string
@@ -1419,9 +1500,15 @@ paths:
                   - ASK
                   - QUICK
                   - DETAILED
+                distanceUnit:
+                  type: string
+                  enum:
+                  - M
+                  - YD
+                  default: M
       responses:
         '200':
-          description: MemberPreferences (favorites, homeCourseId, roundEntryMode)
+          description: MemberPreferences (favorites, homeCourseId, roundEntryMode, distanceUnit)
         '400':
           description: VALIDATION
   /api/me/drafts:
@@ -1863,7 +1950,10 @@ paths:
     get:
       tags:
       - courses
-      summary: Anlage mit Plätzen, Ratings (Quelle, Prüfstatus, Gültigkeit) und Lochdaten
+      summary: Anlage mit Plätzen, Ratings (Quelle, Prüfstatus, Gültigkeit), Lochdaten und GPS-Grünkoordinaten
+      description: Seit 2.4 enthält jedes Layout `holeGeo` (leer, wenn keine Koordinaten erfasst sind). Die Entfernung
+        zum Grün berechnet ausschließlich das Gerät; es gibt keinen Endpunkt, der Standorte entgegennimmt.
+      x-webspace: GET api/courses.php liefert den Datensatz (schemaVersion 2) mit derselben Struktur
       parameters:
       - name: id
         in: path
@@ -1872,7 +1962,21 @@ paths:
           type: string
       responses:
         '200':
-          description: CourseDto
+          description: CourseDto (Auszug)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layouts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        holeGeo:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/HoleGeo'
   /api/admin/stats:
     get:
       tags:
@@ -2155,10 +2259,23 @@ paths:
     get:
       tags:
       - admin
-      summary: Export der Golfplatzdaten (format=csv, json oder quality)
-      description: 'Berechtigung: courses.read. Die Golfplatzpflege läuft in der Node-Edition über Server Actions (courses.write, import), in
-        der Webspace-Edition über api/admin.php?action=courses-load und courses-save mit Revisionsprüfung'
+      summary: Export der Golfplatzdaten (format=csv, json, quality oder gps)
+      description: 'Berechtigung: courses.read. format=gps (seit 2.4): GPS-Grünkoordinaten als CSV mit allen Löchern – auch als
+        Vorlage für den GPS-Import (Spalten course_id, course_name, layout_id, layout_name, hole_number, green_front_lat/lng,
+        green_center_lat/lng, green_back_lat/lng). Die Golfplatzpflege läuft in der Node-Edition über Server Actions
+        (courses.write, import; auch Grünkoordinaten und GPS-CSV-Import), in der Webspace-Edition über
+        api/admin.php?action=courses-load und courses-save mit Revisionsprüfung'
       security: *id003
+      parameters:
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - csv
+          - json
+          - quality
+          - gps
       responses:
         '200':
           description: Datei

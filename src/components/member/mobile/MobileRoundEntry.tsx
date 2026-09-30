@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { CloudOff, Flag, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
-import type { DraftRound, MemberCourseLists, RoundEntryMode } from "@/lib/api/types";
-import { fetchCourse } from "@/lib/courses/client";
+import type { DistanceUnit, DraftRound, MemberCourseLists, RoundEntryMode } from "@/lib/api/types";
+import { fetchCourseOfflineFirst } from "@/lib/courses/offlineCache";
 import { holesFor } from "@/lib/courses/ratingSelection";
 import type { CourseDto } from "@/lib/courses/types";
 import type { EntryMode, FlowPos, HoleView } from "@/lib/rounds/holeFlow";
@@ -71,6 +71,7 @@ export interface MobileEntryProps {
   drafts: DraftRound[];
   lists: MemberCourseLists | undefined;
   entryPref: RoundEntryMode;
+  distanceUnit?: DistanceUnit;
   hcpi: number | null;
 }
 
@@ -106,12 +107,12 @@ export function MobileRoundEntry(props: MobileEntryProps) {
 
   // Platz des fortgesetzten Stands laden (für Par/Handicap je Loch)
   const courseId = resuming && active?.state.courseKind === "DB" ? active.state.courseId : null;
-  const course = useApi<CourseDto | null>(() => (courseId ? (courseId === props.initialCourse?.id ? Promise.resolve(props.initialCourse) : fetchCourse(courseId)) : Promise.resolve(null)), courseId ?? "none");
+  const course = useApi<CourseDto | null>(() => (courseId ? (courseId === props.initialCourse?.id ? Promise.resolve(props.initialCourse) : fetchCourseOfflineFirst(courseId)) : Promise.resolve(null)), courseId ?? "none");
 
   if (props.editId) {
     const holes = viewsOf(props.initial, props.initialCourse);
     const mode: EntryMode = props.initial.scoreMode === "GBE" ? "TOTAL" : props.initial.detailed ? "DETAILED" : "QUICK";
-    return <MobileRoundWizard initial={props.initial} initialCourse={props.initialCourse} editId={props.editId} draftId={props.draftId} lists={props.lists} entryPref={props.entryPref} hcpi={props.hcpi} resume={{ mode, pos: { hole: holes.length - 1, step: "FINAL" } }} />;
+    return <MobileRoundWizard initial={props.initial} initialCourse={props.initialCourse} editId={props.editId} draftId={props.draftId} lists={props.lists} entryPref={props.entryPref} hcpi={props.hcpi} distanceUnit={props.distanceUnit} resume={{ mode, pos: { hole: holes.length - 1, step: "FINAL" } }} />;
   }
 
   if (active && !resuming && decision === "auto") {
@@ -195,10 +196,11 @@ export function MobileRoundEntry(props: MobileEntryProps) {
         lists={props.lists}
         entryPref={props.entryPref}
         hcpi={props.hcpi}
+        distanceUnit={props.distanceUnit}
         resume={active.pos.step === "SETUP" && !active.pendingSave ? null : { mode: active.mode, pos }}
       />
     );
   }
 
-  return <MobileRoundWizard key={props.draftId} initial={props.initial} initialCourse={props.initialCourse} editId={null} draftId={props.draftId} lists={props.lists} entryPref={props.entryPref} hcpi={props.hcpi} resume={null} />;
+  return <MobileRoundWizard key={props.draftId} initial={props.initial} initialCourse={props.initialCourse} editId={null} draftId={props.draftId} lists={props.lists} entryPref={props.entryPref} hcpi={props.hcpi} distanceUnit={props.distanceUnit} resume={null} />;
 }

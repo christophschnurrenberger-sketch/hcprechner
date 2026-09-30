@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { ActionState, CsvPreviewState } from "@/lib/courses/adminForm";
+import type { ActionState, CsvPreviewState, GreenCsvPreviewState } from "@/lib/courses/adminForm";
 
 /**
  * Schreibende Operationen der Golfplatzpflege. Node-Edition: Server Actions (src/app/admin/actions.ts).
@@ -14,11 +14,16 @@ export interface AdminBackend {
   saveLayout: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   saveRatingSet: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   saveHoles: (prev: ActionState, fd: FormData) => Promise<ActionState>;
+  /** GPS-Grünkoordinaten eines Platzes (Front/Mitte/Back je Loch) */
+  saveGreens: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   toggleRatingActive: (fd: FormData) => Promise<void>;
   verifyRating: (fd: FormData) => Promise<void>;
   mergeCourses: (fd: FormData) => Promise<void>;
   previewCsv: (prev: CsvPreviewState, fd: FormData) => Promise<CsvPreviewState>;
   applyCsv: (prev: CsvPreviewState, fd: FormData) => Promise<CsvPreviewState>;
+  /** GPS-CSV: Vorschau und Übernahme (nur Grünkoordinaten) */
+  previewGreenCsv: (prev: GreenCsvPreviewState, fd: FormData) => Promise<GreenCsvPreviewState>;
+  applyGreenCsv: (prev: GreenCsvPreviewState, fd: FormData) => Promise<GreenCsvPreviewState>;
   /** Mitgelieferte Golfplatz-Startdaten übernehmen (nur fehlende Anlagen). */
   importSeed: (prev: ActionState, fd: FormData) => Promise<ActionState>;
 }

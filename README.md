@@ -14,9 +14,9 @@ Drei getrennte Bereiche mit eigener Navigation und eigenem Layout:
 |---|---|
 | Öffentlich (`/`) | Startseite, Anmelden, Registrieren, Passwort vergessen/zurücksetzen, E-Mail bestätigen, Golfplätze Bayern (SEO-Seiten), Rechenregeln & Methodik, Hilfe/FAQ, Datenschutz, Impressum |
 | Mitglieder (`/member`) | Startseite mit großem HCPI und Veränderung, HCP-Verlauf und Rechenweg, **„+ Runde erfassen“** (Assistent: Löcher → Platz → Abschlag → Ergebnis als GBE oder Loch für Loch; nur hinterlegte Abschläge; ungeprüfte Ratings bestätigt der Spieler mit seiner Scorekarte; Hinweis zur 9-Loch-Methode), Ergebnisseite „HCPI vorher → nachher“, Runden mit Detail und Rechenweg-Akkordeon, Bearbeiten und Löschen (Papierkorb), Entwürfe mit automatischem Speichern, Golfplätze mit Favoriten, Heimatplatz und zuletzt gespielt, Onboarding (Start-HCPI, Heimatplatz), Profil (Konto, Sicherheit, Datenschutz mit Export und Kontolöschung), CSV-Import, Werkzeuge (Simulator, GBE-Rechner). **Seit 2.2:** optional „Runde detailliert tracken“ (Putts, GIR, FIR, Bunker, Sand Save, Up & Down, Strafschläge, private Notiz – ein Loch pro Ansicht), „Statistiken ergänzen“ für gespeicherte Runden, Statistikseite mit Filtern und Verläufen, **Community** mit Ranking (nur mit Zustimmung), Mitgliederprofilen und geteilten Runden (Nur ich / Basisdaten / Details). Mobil: untere Navigation Home · HCP · Runden · Community · Profil |
-| Admin (`/admin`) | Eigenes Layout mit Seitenleiste und kompakten Tabellen: Dashboard, Benutzer (Filter, Detail, HCP-Ansicht, protokollierte Benutzeransicht), Runden, Community (Übersicht, Ranking, Moderation geteilter Runden, Schalter), Golfplätze, Ratings, Quellen, Datenqualität, Duplikate, Import, Änderungen, Regelwerk, System, Audit-Log, Berechtigungen, Einstellungen (inkl. Mailversand), globale Suche |
+| Admin (`/admin`) | Eigenes Layout mit Seitenleiste und kompakten Tabellen: Dashboard, Benutzer (Filter, Detail, HCP-Ansicht, protokollierte Benutzeransicht), Runden, Community (Übersicht, Ranking, Moderation geteilter Runden, Schalter), Golfplätze (seit 2.4 mit GPS-Grünkoordinaten und Abdeckung „18/18 ✓“), Ratings, Quellen, Datenqualität, Duplikate, Import, Änderungen, Regelwerk, System, Audit-Log, Berechtigungen, Einstellungen (inkl. Mailversand), globale Suche |
 | Berechnung | Score Differential, 9-Loch-Methode (gespielt + erwartet, DGV-PCC-Tabelle), Course Handicap 9/18, Netto-Doppelbogey/GBE, WHS-Tabelle (3–20 Ergebnisse), ESR rückwirkend, Low HCPI, Soft/Hard Cap, 26,5-Bremse, Tageslogik, abgebrochene Runden 10–17, Stableford, Ergebnisarten |
-| Golfplatzdaten | Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
+| Golfplatzdaten | Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; Grün-Koordinaten je Loch (Mitte, optional Front/Back); CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
 
 **Rollen:** `USER` (Mitglied), `SUPPORT` (Admin-Bereich nur lesend), `ADMIN` (Benutzer und Golfplätze verwalten),
 `SUPER_ADMIN` (zusätzlich Rollen, endgültiges Löschen, Einstellungen). Die Rolle kommt ausschließlich aus der
@@ -33,6 +33,14 @@ Formulars – Loch für Loch Schläge, Putts und nur die relevanten Statistikfra
 Wahl zwischen „Schnell“ und „Detailliert“. Jede Eingabe wird sofort auf dem Gerät gesichert; bei Funkloch geht es weiter,
 eine offline beendete Runde wird später übertragen – ohne doppelte Runden. Installierbar als App (PWA). Desktop und
 Tablet quer behalten die bisherige Eingabe. Details: [`docs/MOBILE-RUNDENEINGABE.md`](docs/MOBILE-RUNDENEINGABE.md).
+
+**Entfernung zum Grün per GPS (ab 2.4):** Während der Runde zeigt die mobile Scorecard mit einem Tipp die Entfernung
+zu Mitte, Front und Back des Grüns („151 m · Mitte Grün · GPS ● ±5 m“). Die Anzeige wird passend zur GPS-Genauigkeit
+gerundet und zeigt nie „0 m“. Der Standort läuft nur während der aktiven Runde und nach Zustimmung; es wird kein
+Bewegungsverlauf gespeichert. Die Grün-Koordinaten pflegt der Admin je Loch (Eingabe, „GPS-Position verwenden“ oder
+CSV). Mitgeliefert werden keine. Für die Apple Watch liegen eine iPhone-App und eine watchOS-App als Quellcode bei
+(`native/apple/`, auf einem Mac zu bauen). Scorecard und WHS-Berechnung bleiben unverändert. Details:
+[`docs/GPS-DISTANZ.md`](docs/GPS-DISTANZ.md).
 
 ## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
 
@@ -81,7 +89,7 @@ Golfplatzpflege → `ADMIN`).
 | `npm run dev` / `build` / `start` | Entwicklung, Produktions-Build, Start |
 | `npm run build:webspace` | Webspace-Edition bauen und als ZIP packen (Startdaten aus `data/seed/`; `--seed <datei>` bzw. `--no-seed`) |
 | `npm test` | Vitest (Engine, Platzdaten, Importer, Repository mit PGlite, Service-Schicht, Rechte, PHP-API mit `php -S`) |
-| `npm run test:e2e` | Browser-Abläufe A–K (Playwright) gegen eine laufende Instanz, siehe `e2e/flows.cjs` |
+| `npm run test:e2e` | Browser-Abläufe A–M (Playwright, u. a. mobile Scorecard, Community, GPS mit simuliertem Standort) gegen eine laufende Instanz, siehe `e2e/flows.cjs` |
 | `npm run user:create-admin` | Super-Admin anlegen bzw. Passwort setzen (Node-Edition) |
 | `TEST_DATABASE_URL=… npm test` | Repository-Tests gegen echtes PostgreSQL |
 | `npm run lint` / `npm run typecheck` | ESLint / TypeScript |
@@ -134,6 +142,8 @@ API beider Editionen: [`docs/openapi.yaml`](docs/openapi.yaml). Das Frontend spr
 - [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md) – Aufbau, Bereiche, API-Adapter, Rechte, Regel-Engine, Datenmodell, Rundungspunkte
 - [`docs/COMMUNITY.md`](docs/COMMUNITY.md) – Community, Ranking, Privatsphäre, Golfstatistik (Definitionen, Speicherung, Grenzen)
 - [`docs/MOBILE-RUNDENEINGABE.md`](docs/MOBILE-RUNDENEINGABE.md) – mobile Scorecard: Ablauf, Offline-Entwurf, Wiederaufnahme, keine doppelten Runden, PWA
+- [`docs/GPS-DISTANZ.md`](docs/GPS-DISTANZ.md) – Entfernung zum Grün: Anzeige-Regeln, Datenschutz, Grün-Koordinaten (Admin, CSV), Apple Watch
+- [`native/apple/README.md`](native/apple/README.md) – iPhone-App und Apple-Watch-App: Aufbau, Protokoll, Energie, Bauen auf dem Mac
 - [`docs/openapi.yaml`](docs/openapi.yaml) – API (Auth, Mitglied, Community, Admin)
 - [`docs/WEBSPACE.md`](docs/WEBSPACE.md) – Webspace-Edition: Installation, Update, Sicherheit, Aufbau
 - [`docs/ABSCHLUSS-CHECK.md`](docs/ABSCHLUSS-CHECK.md) – Checkliste aus der Spezifikation mit Status
@@ -143,4 +153,5 @@ API beider Editionen: [`docs/openapi.yaml`](docs/openapi.yaml). Das Frontend spr
 ## Technik
 
 Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS 4 · Drizzle ORM · PostgreSQL/Supabase bzw. PGlite ·
-Recharts · Lucide · Zod · Vitest · Playwright · jsPDF · nodemailer · Inter.
+Recharts · Lucide · Zod · Vitest · Playwright · jsPDF · nodemailer · Inter. Apple Watch: Swift/SwiftUI,
+WatchConnectivity, CoreLocation (iOS 17, watchOS 10).

@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, LocateFixed } from "lucide-react";
 import { requireAdminPage } from "@/server/adminAuth";
 import { loadAllCourses } from "@/server/courseRepository";
 import { missingSeedInDb } from "@/server/seedImport";
@@ -20,6 +20,9 @@ export default async function AdminCoursesPage() {
       <CourseExportCard>
         <a href="/api/admin/export?format=csv" className={exportLinkClass}>
           <FileSpreadsheet className="h-4 w-4" /> CSV (Importschema)
+        </a>
+        <a href="/api/admin/export?format=gps" className={exportLinkClass}>
+          <LocateFixed className="h-4 w-4" /> GPS-Grünkoordinaten (CSV, alle Löcher)
         </a>
         <a href="/api/admin/export?format=json" className={exportLinkClass}>
           <Download className="h-4 w-4" /> JSON (vollständig)

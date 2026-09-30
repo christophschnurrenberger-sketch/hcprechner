@@ -178,6 +178,44 @@ function RoundEntrySection() {
   );
 }
 
+/** Profil → GPS-Entfernungen: Meter (Standard) oder Yards (sofort gespeichert). */
+function DistanceUnitSection() {
+  const toast = useToast();
+  const profile = useApi(() => api.member.profile(), "profile-distance");
+  const [busy, setBusy] = useState(false);
+  if (!profile.data) return null;
+  const value = profile.data.preferences.distanceUnit ?? "M";
+  return (
+    <Card>
+      <CardHeader title="Distanz" subtitle="Einheit der GPS-Entfernung zum Grün während der Runde." />
+      <CardBody>
+        <Segmented
+          name="Distanz"
+          value={value}
+          onChange={async (distanceUnit) => {
+            if (busy) return;
+            setBusy(true);
+            try {
+              const preferences = await api.member.setDistanceUnit(distanceUnit);
+              profile.setData({ ...profile.data!, preferences });
+              toast("Gespeichert.");
+            } catch (err) {
+              toast(userMessage(err), "error");
+            } finally {
+              setBusy(false);
+            }
+          }}
+          options={[
+            { value: "M" as const, label: "Meter" },
+            { value: "YD" as const, label: "Yards" },
+          ]}
+        />
+        <p className="mt-2 text-sm text-ink-3">Der Standort wird nur während einer laufenden Runde verwendet und nicht gespeichert.</p>
+      </CardBody>
+    </Card>
+  );
+}
+
 function SecuritySection() {
   const { setUser, user } = useSession();
   const toast = useToast();
@@ -322,6 +360,7 @@ export function ProfilePage() {
           <AccountSection />
           <GolfSection />
           <RoundEntrySection />
+          <DistanceUnitSection />
         </div>
       )}
       {tab === "sicherheit" && <SecuritySection />}

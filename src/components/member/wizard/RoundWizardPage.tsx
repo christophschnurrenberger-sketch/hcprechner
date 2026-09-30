@@ -3,9 +3,10 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
-import type { DraftRound, RoundEntryMode, RoundInput } from "@/lib/api/types";
+import type { DistanceUnit, DraftRound, RoundEntryMode, RoundInput } from "@/lib/api/types";
 import { holesFor } from "@/lib/courses/ratingSelection";
 import { fetchCourse } from "@/lib/courses/client";
+import { fetchCourseOfflineFirst } from "@/lib/courses/offlineCache";
 import type { CourseDto } from "@/lib/courses/types";
 import { todayIso } from "@/lib/whs/dates";
 import { useApi } from "@/lib/useApi";
@@ -27,6 +28,8 @@ interface Loaded {
   drafts: DraftRound[];
   openedDraft: DraftRound | null;
   entryPref: RoundEntryMode;
+  /** Einheit der GPS-Entfernung (Profil) */
+  distanceUnit: DistanceUnit;
   /** Vorschlag für die mobile Eingabe: Heimatplatz bzw. zuletzt gespielt */
   suggested: CourseDto | null;
   hcpi: number | null;
@@ -96,7 +99,15 @@ export function RoundWizardPage() {
       api.member.courseLists().catch(() => null),
     ]);
     const base = initialState(todayIso(), profile.profile.gender ?? "M", community?.settings.defaultRoundVisibility ?? "PRIVATE");
-    const common = { base, drafts, openedDraft: null as DraftRound | null, entryPref: profile.preferences.roundEntryMode ?? "ASK", hcpi: hcp?.currentHandicapIndex ?? null, suggested: null as CourseDto | null };
+    const common = {
+      base,
+      drafts,
+      openedDraft: null as DraftRound | null,
+      entryPref: profile.preferences.roundEntryMode ?? "ASK",
+      distanceUnit: profile.preferences.distanceUnit ?? "M",
+      hcpi: hcp?.currentHandicapIndex ?? null,
+      suggested: null as CourseDto | null,
+    };
     if (editId) {
       const detail = await api.member.round(editId);
       const { state, unsupported } = fromInput(detail.input, base);
@@ -108,7 +119,8 @@ export function RoundWizardPage() {
       const draft = drafts.find((d) => d.id === draftParam);
       if (draft) {
         const state = restoreState(draft.input.wizard, base);
-        const course = state.courseKind === "DB" && state.courseId ? await fetchCourse(state.courseId).catch(() => null) : null;
+        // laufende Runde: ohne Netz die auf dem Gerät gespeicherten Platzdaten verwenden
+        const course = state.courseKind === "DB" && state.courseId ? await fetchCourseOfflineFirst(state.courseId).catch(() => null) : null;
         return { ...common, state, course, openedDraft: draft };
       }
     }
@@ -154,6 +166,7 @@ export function RoundWizardPage() {
         drafts={d.drafts}
         lists={lists.data}
         entryPref={d.entryPref}
+        distanceUnit={d.distanceUnit}
         hcpi={d.hcpi}
       />
     );

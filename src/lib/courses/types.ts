@@ -47,6 +47,53 @@ export interface HoleDto {
   gender: Gender | null;
 }
 
+/** WGS-84-Koordinate in Dezimalgrad. */
+export interface GeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
+/** GeoJSON-Polygon der Grünfläche (vorbereitet). Ringe aus [Länge, Breite]-Paaren, erster = letzter Punkt. */
+export interface GreenPolygon {
+  type: "Polygon";
+  coordinates: [number, number][][];
+}
+
+/** Fahnenposition (vorbereitet): wechselt täglich, deshalb mit Zeitpunkt. */
+export interface PinPosition extends GeoPoint {
+  setAt: string;
+}
+
+/**
+ * Grün eines Lochs – unabhängig vom Abschlag (alle Abschläge spielen auf dasselbe Grün).
+ * MVP: Mitte. Vorbereitet: vorne/hinten, Grünfläche (GeoJSON) und Fahnenposition.
+ */
+export interface GreenGeo {
+  front: GeoPoint | null;
+  center: GeoPoint | null;
+  back: GeoPoint | null;
+  polygon: GreenPolygon | null;
+  pin: PinPosition | null;
+}
+
+/** Abschlagposition je Abschlagsfarbe (vorbereitet, z. B. für eine spätere automatische Locherkennung). */
+export interface TeePosition extends GeoPoint {
+  teeColor: string;
+}
+
+/** Wie eine Koordinate erfasst wurde. */
+export type GeoSource = "MANUAL" | "DEVICE_GPS" | "CSV_IMPORT" | "MAP";
+
+/** Geodaten eines Lochs: Platz + Lochnummer (nicht je Abschlag). */
+export interface HoleGeoDto {
+  layoutId: string;
+  holeNumber: number;
+  green: GreenGeo;
+  tees: TeePosition[];
+  source: GeoSource | null;
+  updatedAt: string | null;
+}
+
 export interface LayoutDto {
   id: string;
   courseId: string;
@@ -58,6 +105,8 @@ export interface LayoutDto {
   notes: string | null;
   ratingSets: RatingSetDto[];
   holes: HoleDto[];
+  /** GPS-Geodaten je Loch (fehlt bei älteren Datensätzen → leer). */
+  holeGeo: HoleGeoDto[];
 }
 
 export interface CourseDto {
@@ -106,4 +155,5 @@ export const SOURCE_PRIORITY: Readonly<Record<SourceType, number>> = {
 };
 
 export const LAYOUT_TYPES: readonly LayoutType[] = ["9_HOLE", "18_HOLE", "27_HOLE", "36_HOLE", "SHORT_COURSE"];
+export const GEO_SOURCES: readonly GeoSource[] = ["MANUAL", "DEVICE_GPS", "CSV_IMPORT", "MAP"];
 export const FACILITY_TYPES: readonly FacilityType[] = ["GOLF_COURSE", "SHORT_COURSE", "PAR3", "DRIVING_RANGE"];

@@ -78,6 +78,45 @@ async function visible(locator, timeout = 10000) {
     .catch(() => false);
 }
 
+/** Fiktive Grün-Mitte je Loch des E2E-Testplatzes (keine echten Koordinaten). */
+const green = (n) => ({ latitude: +(47.94 + 0.003 * n).toFixed(6), longitude: +(10.31 + 0.001 * (n % 3)).toFixed(6) });
+/** Punkt `m` Meter südlich (negativ: nördlich) */
+const south = (p, m) => ({ latitude: +(p.latitude - m / 111195).toFixed(7), longitude: p.longitude });
+
+/** Steuerbare Geolocation (ersetzt navigator.geolocation; zählt laufende Standortabfragen). */
+function fakeGeolocation() {
+  const watchers = new Map();
+  let seq = 0;
+  let last = null;
+  window.__geo = {
+    started: 0,
+    get active() {
+      return watchers.size;
+    },
+    emit(latitude, longitude, accuracy) {
+      last = { coords: { latitude, longitude, accuracy, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() };
+      for (const w of [...watchers.values()]) w.ok(last);
+    },
+  };
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: {
+      watchPosition(ok, err) {
+        const id = ++seq;
+        watchers.set(id, { ok, err });
+        window.__geo.started += 1;
+        return id;
+      },
+      clearWatch(id) {
+        watchers.delete(id);
+      },
+      getCurrentPosition(ok, err) {
+        setTimeout(() => (last ? ok(last) : err({ code: 2, message: "keine Position" })), 0);
+      },
+    },
+  });
+}
+
 const BASE_PATH = new URL(BASE).pathname.replace(/\/$/, "");
 /** Wartet, bis der Pfad (ohne Installationsordner) samt Query `re` entspricht. */
 async function waitPath(page, re, timeout = 15000) {
@@ -174,6 +213,34 @@ async function waitPath(page, re, timeout = 15000) {
   await admin.waitForSelector("text=18 Löcher gespeichert", { timeout: 20000 });
   check("G: Lochdaten gepflegt", true);
   await admin.screenshot({ path: `${SHOTS}/11-admin-course.png`, fullPage: true });
+
+  // GPS-Grünkoordinaten (fiktive Testpunkte): ungültige Werte abgelehnt, 18 Löcher gespeichert, Abdeckung sichtbar
+  await admin.getByRole("button", { name: /GPS-Daten/ }).first().click();
+  await admin.waitForSelector("[data-greens-form]");
+  await admin.fill('input[aria-label="Loch 1 Grün Mitte"]', "999, 10.31");
+  await admin.click("text=GPS-Daten speichern");
+  check("G: GPS – ungültige Koordinate (Breite 999) wird abgelehnt", await visible(admin.locator("text=Eine Koordinate ist ungültig."), 15000));
+  for (let n = 1; n <= 18; n++) {
+    const gp = green(n);
+    await admin.fill(`input[aria-label="Loch ${n} Grün Mitte"]`, `${gp.latitude}, ${gp.longitude}`);
+  }
+  await admin.click("text=GPS-Daten speichern");
+  check("G: GPS-Grünkoordinaten für 18 Löcher gespeichert", await visible(admin.locator("text=/GPS-Daten gespeichert \\(18\\/18/"), 20000));
+  await admin.screenshot({ path: `${SHOTS}/12-admin-gps.png`, fullPage: true });
+  // Front/Back für Loch 1 per GPS-CSV (nur Grünkoordinaten, Ratings unverändert)
+  const g1 = green(1);
+  const gpsCsv = path.join(SHOTS, "gps-gruen.csv");
+  fs.writeFileSync(gpsCsv, ["course_name,hole_number,green_front_lat,green_front_lng,green_back_lat,green_back_lng", `E2E Testclub (fiktiv),1,${south(g1, 14).latitude},${g1.longitude},${south(g1, -16).latitude},${g1.longitude}`].join("\n"));
+  await admin.goto(`${BASE}/admin/import/`);
+  await admin.locator("[data-green-csv] input[type=file]").setInputFiles(gpsCsv);
+  await admin.getByRole("button", { name: "GPS-Vorschau erstellen" }).click();
+  await admin.waitForSelector("text=GPS-Vorschau", { timeout: 15000 });
+  await admin.getByRole("button", { name: /Bestätigen und 1 Löcher übernehmen/ }).click();
+  check("G: GPS-CSV-Import (Front/Back) nach Vorschau übernommen", await visible(admin.locator("text=GPS-Import abgeschlossen"), 20000));
+  await admin.goto(`${BASE}/admin/courses/`);
+  await admin.waitForSelector("text=E2E Testclub (fiktiv)");
+  const coverage = await admin.locator("tr", { hasText: "E2E Testclub (fiktiv)" }).locator("[data-green-gps]").innerText();
+  check("G: GPS-Abdeckung in der Anlagenliste „18/18 ✓“", coverage.includes("18/18") && coverage.includes("✓"), coverage);
 
   // Rating von Ottobeuren verifizieren (Startdaten) – Ratings-Übersicht zeigt Status
   await admin.goto(`${BASE}/admin/ratings/`);
@@ -824,6 +891,177 @@ async function waitPath(page, re, timeout = 15000) {
   await sp.getByRole("button", { name: "Ja, verwerfen" }).click();
   await waitPath(sp, /^\/member\/?$/);
   await small.close();
+
+  // ---------------------------------------------------------------- M: GPS – Entfernung zum Grün + Apple-Watch-Vorschau (GPS-Master-Prompt §75–§84)
+  const gpsCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: ["geolocation"] });
+  await gpsCtx.addInitScript(fakeGeolocation);
+  const gp = await gpsCtx.newPage();
+  watch(gp, "gps");
+  await login(gp, "max@example.de", "Max-Neu-Passwort-1");
+  await waitPath(gp, /\/member/);
+  const emit = (pt, accuracy = 5) => gp.evaluate(([lat, lng, acc]) => window.__geo.emit(lat, lng, acc), [pt.latitude, pt.longitude, accuracy]);
+  const walk = async (from, to, accuracy = 5) => {
+    // realistisch gehen (1 m pro Schritt), dann stehen bleiben – der Positionsfilter übernimmt keine Sprünge
+    const step = from > to ? -1 : 1;
+    for (let d = from; d !== to; d += step) {
+      await emit(south(green(1), d), accuracy);
+      await gp.waitForTimeout(250);
+    }
+    for (let i = 0; i < 4; i++) {
+      await emit(south(green(1), to), accuracy);
+      await gp.waitForTimeout(250);
+    }
+  };
+  const wp = await gpsCtx.newPage();
+  watch(wp, "watch");
+  await wp.goto(`${BASE}/member/watch/`);
+  await wp.waitForSelector("[data-watch-preview]");
+  check("M: Watch ohne Runde – „Keine aktive Runde“", await visible(wp.locator("[data-watch-kind=NO_ROUND]").first(), 8000));
+  const watchText = () => wp.locator("[data-watch-preview]").innerText();
+
+  await gp.bringToFront();
+  await gp.goto(`${BASE}/member/rounds/new/`);
+  const gcard = gp.locator("[data-mobile-scorecard]");
+  await gcard.waitFor();
+  await gp.waitForSelector("text=Wie möchtest du deine Runde erfassen?");
+  check("M: Rundenstart – „GPS-Entfernung zum Grün verfügbar“", await visible(gp.locator("[data-gps-available]"), 8000));
+  check("M: Kein Standort ohne aktive Runde", (await gp.evaluate(() => window.__geo.started)) === 0);
+  await gcard.getByRole("button", { name: /Gelb/ }).first().click();
+  await gcard.getByRole("button", { name: /Schnell/ }).click();
+  await gcard.getByRole("button", { name: "Runde starten", exact: true }).click();
+  await gcard.getByRole("heading", { name: "Loch 1", exact: true }).waitFor();
+  const geoActive = await gp.waitForFunction(() => window.__geo.active === 1, null, { timeout: 10000 }).then(() => true).catch(() => false);
+  check("M: Runde gestartet → Standort an (Berechtigung vorhanden)", geoActive);
+  await walk(151, 151);
+  const fab = gp.locator("[data-distance-button]");
+  check("M: Admin-Grünkoordinaten in der Runde erkannt – „◎ 151 m“ in der Scorecard", await fab.filter({ hasText: "151 m" }).isVisible().catch(() => false), await fab.innerText().catch(() => "–"));
+  await fab.click();
+  const ds = gp.locator("[data-distance-screen]");
+  await ds.waitFor();
+  await gp.waitForTimeout(600);
+  const dsText = (await ds.innerText()).replace(/\s+/g, " ");
+  check("M: Distance-Screen – Loch 1, Par 4, Front/Mitte/Back 137/151/167 m, GPS ±5 m", /LOCH 1/.test(dsText) && /PAR 4/.test(dsText) && /137/.test(dsText) && /151/.test(dsText) && /167/.test(dsText) && /±5 m/.test(dsText), dsText.slice(0, 160));
+  check("M: Mitte hervorgehoben", (await ds.locator('[data-distance-target="green_center"][aria-pressed="true"]').count()) === 1);
+  check("M: VoiceOver – „151 Meter zur Mitte des Grüns“", dsText.includes("151 Meter zur Mitte des Grüns"));
+  await gp.screenshot({ path: `${SHOTS}/50-gps-distance.png` });
+  await wp.waitForFunction(() => document.querySelector("[data-watch-kind]")?.getAttribute("data-watch-kind") === "DISTANCE", null, { timeout: 10000 }).catch(() => undefined);
+  const w1 = (await watchText()).replace(/\s+/g, " ");
+  check("M: Watch-Sync – iPhone 151 m → Watch 151 m", /LOCH 1/.test(w1) && /151/.test(w1), w1.slice(0, 120));
+  await walk(151, 148);
+  const moved = await gp.waitForFunction(() => document.querySelector('[data-distance-target="green_center"]')?.textContent?.includes("148"), null, { timeout: 8000 }).then(() => true).catch(() => false);
+  const watchMoved = await wp.waitForFunction(() => document.querySelector("[data-watch-preview]")?.textContent?.includes("148"), null, { timeout: 8000 }).then(() => true).catch(() => false);
+  check("M: Watch-Sync – iPhone 148 m → Watch 148 m", moved && watchMoved, (await watchText()).replace(/\s+/g, " ").slice(0, 120));
+  await wp.screenshot({ path: `${SHOTS}/51-watch-preview.png` });
+  await walk(148, 148, 35);
+  const poor = await gp.waitForFunction(() => document.querySelector("[data-distance-screen]")?.textContent?.includes("GPS ungenau"), null, { timeout: 8000 }).then(() => true).catch(() => false);
+  const poorText = (await ds.innerText()).replace(/\s+/g, " ");
+  check("M: Ungenau (±35 m) – gerundet mit „≈“ und „GPS ungenau“", poor && poorText.includes("≈") && /±35 m/.test(poorText), poorText.slice(0, 160));
+  await gp.screenshot({ path: `${SHOTS}/52-gps-poor.png` });
+  await walk(148, 148, 4);
+  // Lochwechsel in der Entfernung (Scorecard bleibt bei Loch 1)
+  await ds.getByRole("button", { name: /Nächstes Loch/ }).click();
+  await gp.waitForTimeout(500);
+  const h2 = (await ds.innerText()).replace(/\s+/g, " ");
+  check("M: Lochwechsel – Loch 2 ohne Entfernung von Loch 1", /LOCH 2/.test(h2) && !/\b148\b/.test(h2) && /Zu Loch 1 \(Scorecard\)/.test(h2), h2.slice(0, 160));
+  const watchHole2 = await wp.waitForFunction(() => document.querySelector("[data-watch-preview]")?.textContent?.includes("LOCH 2"), null, { timeout: 8000 }).then(() => true).catch(() => false);
+  check("M: Watch folgt dem Lochwechsel", watchHole2);
+  await wp.getByRole("button", { name: /Loch/ }).last().click();
+  const byWatch = await gp.waitForFunction(() => document.querySelector("[data-distance-hole]")?.getAttribute("data-distance-hole") === "3", null, { timeout: 8000 }).then(() => true).catch(() => false);
+  check("M: Loch-Wechsel von der Watch (→) ändert nur die Entfernung", byWatch && (await gcard.getByRole("heading", { name: "Loch 1", exact: true }).count()) === 1);
+  await ds.getByRole("button", { name: "Zu Loch 1 (Scorecard)" }).click();
+  // Watch getrennt + GPS-Signal weg: Watch „Verbindung verloren“, iPhone „GPS wird ermittelt…“, Scorecard läuft weiter
+  await gp.evaluate(() => {
+    BroadcastChannel.prototype.postMessage = function () {};
+  });
+  await gp.waitForTimeout(22000);
+  const lostPhone = (await ds.innerText()).replace(/\s+/g, " ");
+  check("M: GPS verliert Signal – „GPS wird ermittelt…“ (Zahl abgeblendet, nie 0 m)", lostPhone.includes("GPS wird ermittelt") && !/\b0 m\b/.test(lostPhone), lostPhone.slice(0, 160));
+  const lostWatch = (await watchText()).replace(/\s+/g, " ");
+  check("M: Watch getrennt – „Verbindung verloren“ mit Alter der letzten Entfernung", lostWatch.includes("Verbindung verloren") && /vor 0:\d\d min/.test(lostWatch), lostWatch.slice(0, 160));
+  await wp.screenshot({ path: `${SHOTS}/53-watch-lost.png` });
+  await ds.getByRole("button", { name: "Scorecard", exact: true }).click();
+  await gcard.getByRole("button", { name: /^4 Schläge/ }).click();
+  await gcard.getByRole("button", { name: "Nächstes Loch", exact: true }).click();
+  check("M: Scorecard funktioniert ohne GPS weiter", await visible(gcard.getByRole("heading", { name: "Loch 2", exact: true }), 8000));
+  // Offline: Entfernung wird ohne Server berechnet; Platzdaten liegen auf dem Gerät
+  await gpsCtx.setOffline(true);
+  for (let i = 0; i < 4; i++) {
+    await emit(south(green(2), 200), 5);
+    await gp.waitForTimeout(300);
+  }
+  const offlineFab = await gp.waitForFunction(() => document.querySelector("[data-distance-button]")?.textContent?.includes("200 m"), null, { timeout: 8000 }).then(() => true).catch(() => false);
+  const cached = await gp.evaluate(() => (localStorage.getItem("hcp.courseCache.v1") ?? "").includes("holeGeo"));
+  check("M: Offline – Entfernung ohne Serveranfrage, Platzdaten auf dem Gerät", offlineFab && cached);
+  await gpsCtx.setOffline(false);
+  // Runde verlassen = Pause → Standort aus
+  await gp.getByRole("button", { name: "Runde verlassen" }).click();
+  await gp.getByRole("button", { name: "Runde verlassen", exact: true }).last().click();
+  await waitPath(gp, /^\/member\/?$/);
+  await gp.waitForTimeout(500);
+  check("M: Runde pausiert (verlassen) → Standort aus", (await gp.evaluate(() => window.__geo.active)) === 0);
+  // Distanz in Yards (Profil) → Fortsetzen schaltet GPS wieder ein
+  await gp.goto(`${BASE}/member/profile/`);
+  await gp.getByRole("radiogroup", { name: "Distanz" }).getByRole("radio", { name: "Yards" }).click();
+  await gp.waitForSelector("text=Gespeichert.", { timeout: 10000 });
+  await gp.goto(`${BASE}/member/rounds/new/?resume=1`);
+  await gcard.getByRole("heading", { name: "Loch 2", exact: true }).waitFor({ timeout: 15000 });
+  const resumed = await gp.waitForFunction(() => window.__geo.active === 1, null, { timeout: 10000 }).then(() => true).catch(() => false);
+  for (let i = 0; i < 3; i++) {
+    await emit(south(green(2), 200), 5);
+    await gp.waitForTimeout(300);
+  }
+  const yards = await gp.waitForFunction(() => document.querySelector("[data-distance-button]")?.textContent?.includes("219 yd"), null, { timeout: 8000 }).then(() => true).catch(() => false);
+  check("M: Fortsetzen → Standort wieder an; Distanz in Yards (200 m = 219 yd)", resumed && yards, await fab.innerText().catch(() => "–"));
+  await gp.goto(`${BASE}/member/profile/`);
+  await gp.getByRole("radiogroup", { name: "Distanz" }).getByRole("radio", { name: "Meter" }).click();
+  await gp.waitForSelector("text=Gespeichert.", { timeout: 10000 });
+  // Runde beenden → Standort STOP, Watch „Keine aktive Runde“
+  await gp.goto(`${BASE}/member/rounds/new/?resume=1`);
+  await gcard.getByRole("heading", { name: "Loch 2", exact: true }).waitFor({ timeout: 15000 });
+  for (let i = 1; i < 18; i++) {
+    await gcard.getByRole("heading", { name: `Loch ${i + 1}`, exact: true }).waitFor();
+    await gcard.getByRole("button", { name: new RegExp(`^${pars[i]} Schläge`) }).click();
+    await gcard.getByRole("button", { name: i === 17 ? "Runde abschließen" : "Nächstes Loch", exact: true }).click();
+    if (i === 8) {
+      await gp.waitForTimeout(450); // Doppeltipp-Schutz der Scorecard
+      await gcard.getByRole("button", { name: "Back Nine starten", exact: true }).click();
+    }
+  }
+  await gp.waitForSelector("text=Runde geschafft");
+  check("M: Übersicht vor dem Abschluss – GPS pausiert", (await gp.evaluate(() => window.__geo.active)) === 0);
+  await gcard.getByRole("button", { name: "Runde beenden", exact: true }).click();
+  await gp.waitForSelector("text=Runde gespeichert.", { timeout: 20000 });
+  await gp.waitForTimeout(800);
+  check("M: Runde beendet → Standort gestoppt, keine weitere Erfassung", (await gp.evaluate(() => window.__geo.active)) === 0);
+  const ended = await wp.waitForFunction(() => document.querySelector("[data-watch-kind]")?.getAttribute("data-watch-kind") === "NO_ROUND", null, { timeout: 10000 }).then(() => true).catch(() => false);
+  check("M: Watch nach Rundenende – „Keine aktive Runde“", ended);
+  await gpsCtx.close();
+  // Ohne Standortberechtigung: Erklärung → „Standort aktivieren“ → verweigert; Runde läuft weiter
+  const noGeo = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const ng = await noGeo.newPage();
+  watch(ng, "no-geo");
+  await login(ng, "max@example.de", "Max-Neu-Passwort-1");
+  await waitPath(ng, /\/member/);
+  await ng.goto(`${BASE}/member/rounds/new/`);
+  const ncard = ng.locator("[data-mobile-scorecard]");
+  await ng.waitForSelector("text=Wie möchtest du deine Runde erfassen?");
+  await ncard.getByRole("button", { name: /Gelb/ }).first().click();
+  await ncard.getByRole("button", { name: /Schnell/ }).click();
+  await ncard.getByRole("button", { name: "Runde starten", exact: true }).click();
+  const nfab = ng.locator("[data-distance-button]");
+  await nfab.waitFor();
+  check("M: Ohne Berechtigung – Schnellzugriff „Distanz“ (kein automatischer Standort)", (await nfab.innerText()).includes("Distanz"));
+  await nfab.click();
+  check("M: Erstnutzung – „Standortzugriff erforderlich“", await visible(ng.locator("text=Standortzugriff erforderlich"), 8000));
+  await ng.screenshot({ path: `${SHOTS}/54-gps-permission.png` });
+  await ng.getByRole("button", { name: "Standort aktivieren" }).click();
+  check("M: Verweigert – „Standortzugriff deaktiviert“ + Erneut versuchen", await visible(ng.locator("text=Standortzugriff deaktiviert"), 10000));
+  await ng.getByRole("button", { name: "Scorecard", exact: true }).click();
+  await ng.getByRole("button", { name: "Runde verlassen" }).click();
+  await ng.getByRole("button", { name: "Runde verwerfen …" }).click();
+  await ng.getByRole("button", { name: "Ja, verwerfen" }).click();
+  await waitPath(ng, /^\/member\/?$/);
+  await noGeo.close();
 
   // ---------------------------------------------------------------- K: Desktop
   await login(u, "max@example.de", "Max-Neu-Passwort-1");

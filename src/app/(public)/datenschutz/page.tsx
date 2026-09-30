@@ -19,8 +19,19 @@ export default function PrivacyPage() {
             </ul>
           </section>
           <section className="space-y-2">
+            <h2 className="font-semibold text-ink">Standort (Entfernung zum Grün)</h2>
+            <p>
+              Den Standort fragt die App nur ab, wenn du während einer laufenden Runde die Entfernung zum Grün aktivierst. Die Entfernung wird auf deinem Gerät berechnet; dein Standort wird
+              weder gespeichert noch an den Server übertragen, und es entsteht kein Bewegungsverlauf. Mit Pause oder Ende der Runde endet die Abfrage. Die Freigabe kannst du jederzeit in den
+              Einstellungen deines Browsers bzw. Geräts widerrufen. Nutzt du bei der Platzsuche „Meinen Standort verwenden“, wird der Standort nur für diese Suche verwendet und nicht gespeichert.
+            </p>
+          </section>
+          <section className="space-y-2">
             <h2 className="font-semibold text-ink">Cookies</h2>
-            <p>Es wird ausschließlich ein technisch notwendiges Sitzungscookie gesetzt (HttpOnly). Es gibt kein Tracking und keine Werbung.</p>
+            <p>
+              Es wird ausschließlich ein technisch notwendiges Sitzungscookie gesetzt (HttpOnly). Es gibt kein Tracking und keine Werbung. Im Speicher deines Browsers liegen nur
+              Rundenentwürfe, die Platzdaten der laufenden Runde und Anzeige-Einstellungen – keine Zugangsdaten.
+            </p>
           </section>
           <section className="space-y-2">
             <h2 className="font-semibold text-ink">Wer die Daten sieht</h2>

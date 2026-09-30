@@ -16,7 +16,7 @@
  * GET    /api/me/courses              Favoriten, Heimatplatz, zuletzt gespielt
  * PUT    /api/me/favorites/:courseId  { favorite }
  * PUT    /api/me/home-course          { courseId }
- * PUT    /api/me/preferences          { roundEntryMode: ASK|QUICK|DETAILED }
+ * PUT    /api/me/preferences          { roundEntryMode?: ASK|QUICK|DETAILED, distanceUnit?: M|YD }
  * GET    /api/me/drafts | PUT/DELETE /api/me/drafts/:id
  * POST   /api/me/import/preview | /api/me/import   { csv }
  * PUT    /api/me/rounds/:id/stats     { holeStats } → Lochstatistik ergänzen (Handicap bleibt unverändert)
@@ -47,7 +47,7 @@ import {
   previewRoundsImport,
   saveDraft,
   setFavorite,
-  setHomeCourse, setRoundEntryMode,
+  setDistanceUnit, setHomeCourse, setRoundEntryMode,
   setStartHandicap,
   simulateDifferential,
   statistics,
@@ -258,8 +258,11 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
 
   if (head === "preferences" && !id && method === "PUT") {
     const body = await readJson(req, 1000);
+    if (body.roundEntryMode === undefined && body.distanceUnit === undefined) throw apiError("VALIDATION", "Keine Einstellung angegeben.");
     const { result } = await withMemberDoc(user.id, (doc) => {
-      const next = setRoundEntryMode(doc, body.roundEntryMode);
+      let next = doc;
+      if (body.roundEntryMode !== undefined) next = setRoundEntryMode(next, body.roundEntryMode);
+      if (body.distanceUnit !== undefined) next = setDistanceUnit(next, body.distanceUnit);
       return { doc: next, result: next.preferences };
     });
     return json(publicPreferences({ preferences: result }));

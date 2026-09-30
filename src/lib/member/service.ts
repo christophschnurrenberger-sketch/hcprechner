@@ -135,6 +135,12 @@ export function setRoundEntryMode(doc: MemberDoc, mode: unknown): MemberDoc {
   return { ...doc, preferences: { ...doc.preferences, roundEntryMode: mode } };
 }
 
+/** Distanzeinheit des GPS-Features: Meter (Standard) oder Yards. */
+export function setDistanceUnit(doc: MemberDoc, unit: unknown): MemberDoc {
+  if (unit !== "M" && unit !== "YD") throw apiError("VALIDATION", "Ungültige Auswahl.", { distanceUnit: "Bitte Meter oder Yards wählen." });
+  return { ...doc, preferences: { ...doc.preferences, distanceUnit: unit } };
+}
+
 /** Zuletzt gespielte Plätze aus der Datenbank (neueste zuerst, ohne Doppelte). */
 export function recentCourseIds(doc: MemberDoc, limit = 5): string[] {
   const out: string[] = [];

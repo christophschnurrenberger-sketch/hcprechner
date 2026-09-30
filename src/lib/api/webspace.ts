@@ -32,6 +32,7 @@ import {
   saveDraft,
   setFavorite,
   setHomeCourse,
+  setDistanceUnit,
   setRoundEntryMode,
   setStartHandicap,
   simulateDifferential,
@@ -255,6 +256,12 @@ const member: MemberApi = {
   async setRoundEntryMode(mode) {
     const { doc } = await loadDoc();
     const next = setRoundEntryMode(doc, mode);
+    store(next, await savePrefs(next));
+    return publicPreferences(next);
+  },
+  async setDistanceUnit(unit) {
+    const { doc } = await loadDoc();
+    const next = setDistanceUnit(doc, unit);
     store(next, await savePrefs(next));
     return publicPreferences(next);
   },

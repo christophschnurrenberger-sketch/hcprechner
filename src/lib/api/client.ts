@@ -22,6 +22,7 @@ import type {
   AdminUserRow,
   AuditEntry,
   DashboardData,
+  DistanceUnit,
   DraftRound,
   HcpResult,
   MemberCourseLists,
@@ -133,6 +134,8 @@ export interface MemberApi {
   setHomeCourse(courseId: string | null): Promise<MemberPreferences>;
   /** Standard der mobilen Rundeneingabe (Profil) */
   setRoundEntryMode(mode: RoundEntryMode): Promise<MemberPreferences>;
+  /** Distanzeinheit des GPS-Features (Profil) */
+  setDistanceUnit(unit: DistanceUnit): Promise<MemberPreferences>;
   drafts(): Promise<DraftRound[]>;
   saveDraft(draft: { id: string; label: string; input: DraftRound["input"] }): Promise<DraftRound>;
   deleteDraft(id: string): Promise<void>;

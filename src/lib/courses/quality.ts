@@ -1,5 +1,6 @@
 import { addDays } from "@/lib/whs/dates";
 import { findDuplicates, type DuplicatePair } from "./duplicates";
+import { greenCoverage } from "./geo";
 import { hasCompleteValues } from "./ratingSelection";
 import type { CourseDto, RatingSetDto } from "./types";
 
@@ -20,7 +21,9 @@ export type QualityIssueCode =
   | "MISSING_HOLES"
   | "DRIVING_RANGE_WITH_LAYOUT"
   | "NINE_SIDE_MISSING"
-  | "POSSIBLE_DUPLICATE";
+  | "POSSIBLE_DUPLICATE"
+  /** GPS-Grünkoordinaten nur für einen Teil der Löcher (Platz ohne GPS-Daten ist kein Befund) */
+  | "GREEN_GPS_INCOMPLETE";
 
 export interface QualityIssue {
   code: QualityIssueCode;
@@ -56,6 +59,11 @@ export interface QualityReport {
   missingSource: number;
   missingCheckDate: number;
   contradictory: number;
+  /** Anlagen, bei denen mindestens ein Platz für alle Löcher eine Grünmitte hat */
+  facilitiesWithGreenGps: number;
+  /** Plätze mit vollständigen bzw. teilweisen GPS-Grünkoordinaten */
+  layoutsWithGreenGps: number;
+  layoutsWithPartialGreenGps: number;
   duplicates: DuplicatePair[];
   byRegion: { region: string | null; facilities: number; withVerifiedRating: number }[];
   issues: QualityIssue[];
@@ -107,6 +115,10 @@ export function buildQualityReport(courses: readonly CourseDto[], today: string)
       }
       if (layout.holes.length === 0) {
         push({ code: "MISSING_HOLES", severity: "info", layoutId: layout.id, detail: layout.name });
+      }
+      const gps = greenCoverage(layout);
+      if (gps.level === "PARTIAL") {
+        push({ code: "GREEN_GPS_INCOMPLETE", severity: "info", layoutId: layout.id, detail: `${layout.name}: ${gps.withCenter}/${gps.holes} – fehlt Loch ${gps.missing.join(", ")}` });
       }
       for (const s of lsets) {
         const base = { layoutId: layout.id, ratingSetId: s.id, detail: `${layout.name} · ${s.teeColor} ${s.gender === "F" ? "Damen" : "Herren"} · ${s.holes} Loch` };
@@ -205,6 +217,9 @@ export function buildQualityReport(courses: readonly CourseDto[], today: string)
     missingSource,
     missingCheckDate,
     contradictory,
+    facilitiesWithGreenGps: golf.filter((c) => c.layouts.some((l) => l.active && greenCoverage(l).level === "COMPLETE")).length,
+    layoutsWithGreenGps: golf.reduce((n, c) => n + c.layouts.filter((l) => l.active && greenCoverage(l).level === "COMPLETE").length, 0),
+    layoutsWithPartialGreenGps: golf.reduce((n, c) => n + c.layouts.filter((l) => l.active && greenCoverage(l).level === "PARTIAL").length, 0),
     duplicates,
     byRegion: regions
       .map((region) => ({

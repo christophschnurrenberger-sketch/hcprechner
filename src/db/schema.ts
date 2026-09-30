@@ -2,7 +2,8 @@
  * Relationales Datenmodell.
  *
  * Golfanlage (courses) → Layout/Platz (layouts) → Rating-Set je Abschlag,
- * Geschlecht, 9/18 Loch und Gültigkeitszeitraum (rating_sets) → Löcher (holes).
+ * Geschlecht, 9/18 Loch und Gültigkeitszeitraum (rating_sets) → Löcher (holes)
+ * und GPS-Geodaten je Loch (hole_geo, Grün unabhängig vom Abschlag).
  *
  * Ratingwerte werden nie abgeleitet: Fehlt ein Wert, bleibt er NULL.
  */
@@ -17,6 +18,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -160,6 +162,55 @@ export const holes = pgTable(
   ],
 );
 
+/**
+ * GPS-Geodaten je Loch eines Platzes (Platz + Lochnummer, nicht je Abschlag): Grün vorne/Mitte/hinten,
+ * vorbereitet Grünfläche (GeoJSON), Fahnenposition und Abschlagpositionen. Alle Werte optional –
+ * Plätze ohne GPS-Daten funktionieren unverändert. Unabhängig von `holes` (dort ersetzt das Speichern alle Zeilen).
+ */
+export const holeGeo = pgTable(
+  "hole_geo",
+  {
+    layoutId: uuid("layout_id")
+      .notNull()
+      .references(() => layouts.id, { onDelete: "cascade" }),
+    holeNumber: smallint("hole_number").notNull(),
+    greenFrontLat: doublePrecision("green_front_lat"),
+    greenFrontLng: doublePrecision("green_front_lng"),
+    greenCenterLat: doublePrecision("green_center_lat"),
+    greenCenterLng: doublePrecision("green_center_lng"),
+    greenBackLat: doublePrecision("green_back_lat"),
+    greenBackLng: doublePrecision("green_back_lng"),
+    /** GeoJSON-Polygon der Grünfläche (vorbereitet) */
+    greenPolygon: jsonb("green_polygon"),
+    /** Fahnenposition (vorbereitet) */
+    pinLat: doublePrecision("pin_lat"),
+    pinLng: doublePrecision("pin_lng"),
+    pinSetAt: timestamp("pin_set_at", { withTimezone: true }),
+    /** Abschlagpositionen je Farbe (vorbereitet): [{ teeColor, latitude, longitude }] */
+    teePositions: jsonb("tee_positions"),
+    /** Erfassungsart: MANUAL, DEVICE_GPS, CSV_IMPORT, MAP */
+    source: text("source"),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({ name: "hole_geo_pk", columns: [t.layoutId, t.holeNumber] }),
+    check("hole_geo_hole_number_check", sql`${t.holeNumber} between 1 and 36`),
+    check(
+      "hole_geo_latitude_check",
+      sql`(${t.greenFrontLat} is null or ${t.greenFrontLat} between -90 and 90) and (${t.greenCenterLat} is null or ${t.greenCenterLat} between -90 and 90) and (${t.greenBackLat} is null or ${t.greenBackLat} between -90 and 90) and (${t.pinLat} is null or ${t.pinLat} between -90 and 90)`,
+    ),
+    check(
+      "hole_geo_longitude_check",
+      sql`(${t.greenFrontLng} is null or ${t.greenFrontLng} between -180 and 180) and (${t.greenCenterLng} is null or ${t.greenCenterLng} between -180 and 180) and (${t.greenBackLng} is null or ${t.greenBackLng} between -180 and 180) and (${t.pinLng} is null or ${t.pinLng} between -180 and 180)`,
+    ),
+    check(
+      "hole_geo_pairs_check",
+      sql`(${t.greenFrontLat} is null) = (${t.greenFrontLng} is null) and (${t.greenCenterLat} is null) = (${t.greenCenterLng} is null) and (${t.greenBackLat} is null) = (${t.greenBackLng} is null) and (${t.pinLat} is null) = (${t.pinLng} is null)`,
+    ),
+    check("hole_geo_source_check", sql`${t.source} is null or ${t.source} in ('MANUAL','DEVICE_GPS','CSV_IMPORT','MAP')`),
+  ],
+);
+
 /** Protokoll aller Änderungen an Platzdaten (Admin, CSV-Import, Importer). */
 export const changeLog = pgTable(
   "change_log",
@@ -231,6 +282,7 @@ export const layoutsRelations = relations(layouts, ({ one, many }) => ({
   course: one(courses, { fields: [layouts.courseId], references: [courses.id] }),
   ratingSets: many(ratingSets),
   holes: many(holes),
+  holeGeo: many(holeGeo),
 }));
 
 export const ratingSetsRelations = relations(ratingSets, ({ one }) => ({
@@ -239,6 +291,10 @@ export const ratingSetsRelations = relations(ratingSets, ({ one }) => ({
 
 export const holesRelations = relations(holes, ({ one }) => ({
   layout: one(layouts, { fields: [holes.layoutId], references: [layouts.id] }),
+}));
+
+export const holeGeoRelations = relations(holeGeo, ({ one }) => ({
+  layout: one(layouts, { fields: [holeGeo.layoutId], references: [layouts.id] }),
 }));
 
 export const playerProfilesRelations = relations(playerProfiles, ({ many }) => ({
@@ -257,6 +313,8 @@ export type RatingSetRow = typeof ratingSets.$inferSelect;
 export type NewRatingSetRow = typeof ratingSets.$inferInsert;
 export type HoleRow = typeof holes.$inferSelect;
 export type NewHoleRow = typeof holes.$inferInsert;
+export type HoleGeoRow = typeof holeGeo.$inferSelect;
+export type NewHoleGeoRow = typeof holeGeo.$inferInsert;
 
 /** Vom Admin angelegte Benutzerkonten (Rolle „player“ oder „editor“ = zusätzlich Golfplatzpflege). */
 export const appUsers = pgTable(

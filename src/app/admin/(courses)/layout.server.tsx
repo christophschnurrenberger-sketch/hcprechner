@@ -3,10 +3,13 @@ import { AdminBackendProvider } from "@/components/admin/AdminBackend";
 import { requireAdminPage } from "@/server/adminAuth";
 import {
   applyCsvAction,
+  applyGreenCsvAction,
   importSeedAction,
   mergeCoursesAction,
   previewCsvAction,
+  previewGreenCsvAction,
   saveCourseAction,
+  saveGreensAction,
   saveHolesAction,
   saveLayoutAction,
   saveRatingSetAction,
@@ -22,11 +25,14 @@ const backend = {
   saveLayout: saveLayoutAction,
   saveRatingSet: saveRatingSetAction,
   saveHoles: saveHolesAction,
+  saveGreens: saveGreensAction,
   toggleRatingActive: toggleRatingActiveAction,
   verifyRating: verifyRatingAction,
   mergeCourses: mergeCoursesAction,
   previewCsv: previewCsvAction,
   applyCsv: applyCsvAction,
+  previewGreenCsv: previewGreenCsvAction,
+  applyGreenCsv: applyGreenCsvAction,
   importSeed: importSeedAction,
 };
 

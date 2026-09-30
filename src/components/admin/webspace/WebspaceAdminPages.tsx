@@ -2,9 +2,10 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileSpreadsheet, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, LocateFixed, Upload } from "lucide-react";
 import { toAdminCourseRows, toDuplicateViews, toRatingRows, toSourceRows } from "@/lib/courses/adminViews";
 import { coursesToCsv } from "@/lib/courses/csv";
+import { greensToCsv } from "@/lib/courses/greenCsv";
 import { datasetFromImport, missingSeedCourses, parseDataset, recordImportRun, type CourseDataset } from "@/lib/courses/dataset";
 import { withBasePath } from "@/lib/runtime";
 import { buildQualityReport } from "@/lib/courses/quality";
@@ -85,6 +86,9 @@ export function WsCourseList() {
         <CourseExportCard>
           <button type="button" className={exportLinkClass} onClick={() => downloadText(`golfplaetze-${stamp}.csv`, "﻿" + coursesToCsv(dataset.courses), "text/csv;charset=utf-8")}>
             <FileSpreadsheet className="h-4 w-4" /> CSV (Importschema)
+          </button>
+          <button type="button" className={exportLinkClass} onClick={() => downloadText(`gps-gruen-${stamp}.csv`, "\uFEFF" + greensToCsv(dataset.courses.filter((c) => c.active)), "text/csv;charset=utf-8")}>
+            <LocateFixed className="h-4 w-4" /> GPS-Grünkoordinaten (CSV, alle Löcher)
           </button>
           <button type="button" className={exportLinkClass} onClick={() => downloadText(`golfplaetze-${stamp}.json`, JSON.stringify(dataset, null, 2), "application/json")}>
             <Download className="h-4 w-4" /> JSON (vollständig)

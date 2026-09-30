@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { missingSeedCourses, parseDataset, type CourseDataset } from "@/lib/courses/dataset";
 import type { CourseDto } from "@/lib/courses/types";
-import { createCourse, createLayout, createRatingSet, loadAllCourses, replaceHoles } from "./courseRepository";
+import { createCourse, createLayout, createRatingSet, loadAllCourses, replaceHoles, setGreenCoordinates } from "./courseRepository";
 
 export const SEED_FILE = path.join("data", "seed", "golfplaetze-bayern.json");
 
@@ -33,7 +33,7 @@ export async function importSeedIntoDb(actor = "seed"): Promise<string[]> {
     void _slug;
     const created = await createCourse(courseInput, "SEED", actor);
     for (const layout of layouts) {
-      const { ratingSets, holes, id: _lid, courseId: _cid, ...layoutInput } = layout;
+      const { ratingSets, holes, holeGeo, id: _lid, courseId: _cid, ...layoutInput } = layout;
       void _lid;
       void _cid;
       const l = await createLayout({ ...layoutInput, courseId: created.id }, "SEED", actor);
@@ -53,6 +53,16 @@ export async function importSeedIntoDb(actor = "seed"): Promise<string[]> {
             return h;
           }),
           actor,
+        );
+      }
+      // GPS-Grünkoordinaten der Startdaten (falls vorhanden) übernehmen
+      const greens = (holeGeo ?? []).filter((g) => g.green.front || g.green.center || g.green.back);
+      if (greens.length > 0) {
+        await setGreenCoordinates(
+          l.id,
+          greens.map((g) => ({ holeNumber: g.holeNumber, front: g.green.front, center: g.green.center, back: g.green.back, source: g.source })),
+          actor,
+          "SEED",
         );
       }
     }

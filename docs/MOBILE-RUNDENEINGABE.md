@@ -64,6 +64,23 @@ Runde starten → Loch 1: Schläge → Putts → Statistik → Loch 2 … → Lo
 - **„Statistiken ergänzen“** (`/member/rounds/stats?id=`) nutzt auf dem Smartphone dieselben Schritte.
   Schläge sind bei Runden mit Loch-für-Loch-Ergebnis gesperrt; das Handicap bleibt unverändert.
 
+## Entfernung zum Grün (ab 2.4)
+
+Hat der Platz GPS-Grünkoordinaten, steht in der Fußzeile jedes Lochs neben „Weiter“ der Schnellzugriff
+**„◎ 151 m“** (ohne Standortfreigabe „Distanz“).
+- Ein Tipp öffnet den Distance-Screen: Loch, Par, Entfernung zu Mitte, Front und Back, GPS-Status, Lochwechsel.
+- „Scorecard“ führt zurück an dieselbe Stelle.
+- Der Start-Bildschirm weist mit „GPS-Entfernung zum Grün verfügbar“ darauf hin.
+
+Die Scorecard bleibt davon unabhängig:
+- GPS blockiert keine Eingabe und ändert nie das Loch der Scorecard.
+- Ohne Berechtigung, ohne Signal oder ohne Grün-Koordinaten funktioniert alles wie bisher.
+- Der Standort läuft nur von Loch 1 bis zum letzten Loch, einschließlich des Zwischenstands nach Loch 9. Beim
+  Start, in der Übersicht und im Ergebnis ist er aus, und beim Verlassen der Runde stoppt er.
+
+Beim Start legt die Scorecard die Platzdaten auf dem Gerät ab (höchstens 3 Plätze). So funktionieren Entfernung
+und Wiederaufnahme auch im Funkloch. Details: [`GPS-DISTANZ.md`](GPS-DISTANZ.md).
+
 ## Nichts verlieren: Entwurf, Offline, Wiederaufnahme
 
 | Situation | Verhalten |
@@ -102,6 +119,9 @@ in `preferences.roundEntryMode`.
 - API: Node `PUT /api/me/preferences`, Webspace `me.php?action=prefs-save`.
 - Bei „fragen“ ist die zuletzt auf diesem Gerät gewählte Art vorausgewählt.
 
+Profil → Konto → **Distanz** (ab 2.4): „Meter“ (Standard) oder „Yards“ für die Entfernung zum Grün, gespeichert in
+`preferences.distanceUnit` (`M` | `YD`) über dieselben Endpunkte.
+
 ## Grenzen
 
 - **Kein Service Worker:** Eine laufende Runde arbeitet ohne Verbindung weiter und geht nicht verloren. Die
@@ -109,6 +129,8 @@ in `preferences.roundEntryMode`.
   Beim nächsten Öffnen mit Verbindung wird die Runde fortgesetzt bzw. übertragen.
 - **Platz ohne Lochdaten** (z. B. die Startdaten Ottobeuren): Es gibt nur das Gesamtergebnis. Für
   Lochstatistik braucht der Platz Par und Handicap je Loch (Admin → Anlage → Lochdaten).
+- **Entfernung zum Grün** braucht Grün-Koordinaten je Loch (Admin → Anlage → Platz → „GPS-Daten“). Mitgeliefert
+  werden keine; ohne sie erscheint der Schnellzugriff nicht.
 - **Admin:** Der Admin-Bereich hat keine eigene mobile Scorecard und zeigt Runden unverändert an.
 
 ## Code
@@ -142,3 +164,6 @@ in `preferences.roundEntryMode`.
   - Tablet hoch/quer
   - kleines Smartphone (375 × 667)
   - Verwerfen nur mit Rückfrage
+- **E2E GPS** (Abschnitt M, ab 2.4): Schnellzugriff in der Scorecard, Distance-Screen, Lochwechsel ohne alte
+  Entfernung, Scorecard ohne GPS, Offline, Pause/Fortsetzen, Rundenende stoppt den Standort (Liste in
+  [`GPS-DISTANZ.md`](GPS-DISTANZ.md)).

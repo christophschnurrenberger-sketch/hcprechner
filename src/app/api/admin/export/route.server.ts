@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { coursesToCsv } from "@/lib/courses/csv";
+import { greensToCsv } from "@/lib/courses/greenCsv";
 import { buildQualityReport } from "@/lib/courses/quality";
 import { requireAdmin } from "@/server/adminAuth";
 import { loadAllCourses } from "@/server/courseRepository";
 
 export const dynamic = "force-dynamic";
 
-/** Export der Golfplatzdatenbank (CSV im Importschema, JSON vollständig, Qualitätsbericht). */
+/** Export der Golfplatzdatenbank (CSV im Importschema, GPS-CSV aller Löcher, JSON vollständig, Qualitätsbericht). */
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin("courses.read");
@@ -21,6 +22,14 @@ export async function GET(request: NextRequest) {
       headers: {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": `attachment; filename="golfplaetze-${stamp}.csv"`,
+      },
+    });
+  }
+  if (format === "gps") {
+    return new NextResponse("\uFEFF" + greensToCsv(courses.filter((c) => c.active)), {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="gps-gruen-${stamp}.csv"`,
       },
     });
   }

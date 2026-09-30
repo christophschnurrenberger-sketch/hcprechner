@@ -1,8 +1,75 @@
 # Abschluss-Check
 
-Stand: 30.09.2026 · Version 2.3.0 · **439 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
-Statistik, Community, Ablauf der mobilen Scorecard, idempotentes Speichern, Parität TypeScript ↔ PHP, Node-API mit PGlite
-und PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
+Stand: 30.09.2026 · Version 2.4.0 · **535 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
+Statistik, Community, Ablauf der mobilen Scorecard, idempotentes Speichern, GPS/Entfernung/Watch-Protokoll, Parität
+TypeScript ↔ PHP, Node-API mit PGlite und PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build
+(standalone) und Webspace-ZIP erfolgreich.
+
+## Version 2.4 – GPS: Entfernung zum Grün und Apple Watch (GPS-Master-Prompt, Definition of Done §118)
+
+Browser-Abläufe (`e2e/flows.cjs`: Abschnitt M neu, GPS-Schritte in G; simulierte Geolocation) gegen beide Editionen:
+**Node __NODE_E2E__** und **Webspace __WS_E2E__** (ZIP 2.4.0 auf dem IONOS-ähnlichen Apache). Davon betreffen
+30 Prüfungen GPS; sie sind in beiden Editionen grün. 96 neue Unit-Tests. Konzept:
+[`GPS-DISTANZ.md`](GPS-DISTANZ.md), native Apps: [`native/apple/README.md`](../native/apple/README.md).
+
+| Punkt (§118) | Status | Nachweis |
+|---|---|---|
+| **Golfplatzdaten** | | |
+| Grüns können GPS-Koordinaten besitzen | ✅ | Tabelle `hole_geo` (je Platz und Loch, unabhängig vom Abschlag), `LayoutDto.holeGeo`, Datensatz `schemaVersion: 2`; `tests/courses/greens-repository.test.ts` |
+| Green Center funktioniert | ✅ | MVP-Ziel und Standard; E2E M „Distance-Screen … 151 m“ |
+| Front/Back vorbereitet | ✅ | über „vorbereitet“ hinaus nutzbar: Admin „Front/Back erfassen“, CSV, Anzeige 137/151/167 m (E2E G und M); Grünfläche, Fahne und Abschläge im Datenmodell vorbereitet |
+| Bestehende Plätze funktionieren weiterhin | ✅ | Migration legt nur eine neue Tabelle an; „bestehende Plätze laden ohne GPS-Daten“, „ältere Datensätze (Version 1)“; Abläufe A–L unverändert grün |
+| Fehlende GPS-Daten sauber behandelt | ✅ | Loch ohne Daten: „Für dieses Loch sind noch keine GPS-Gründaten hinterlegt.“; Platz ohne Daten: GPS bleibt aus, kein Schnellzugriff (`roundGps.test.ts`) |
+| **Smartphone** | | |
+| GPS-Berechtigung funktioniert | ✅ | Zustände UNKNOWN/AUTHORIZED/DENIED/RESTRICTED/UNAVAILABLE (`location.test.ts`); E2E „Standortzugriff erforderlich“, „Standortzugriff deaktiviert“ + „Erneut versuchen“ |
+| Aktueller Standort wird ermittelt | ✅ | `LocationService` (fortlaufende Messung, Filter); E2E „Runde gestartet → Standort an“ |
+| Distanz korrekt berechnet | ✅ | Vincenty (WGS-84) gegen GeographicLib < 1 mm (`distance.test.ts`); E2E 151 m → 148 m nach 3 m Richtung Grün |
+| Distanz in Metern | ✅ | Standard Meter; Yards wählbar (E2E 200 m = 219 yd) |
+| GPS-Genauigkeit angezeigt | ✅ | „GPS ● ±5 m“ (E2E) |
+| Schlechte GPS-Qualität erkannt | ✅ | „GPS ungenau“, Rundung mit „≈“ (E2E ±35 m); Messungen > 100 m verworfen, Sprünge gefiltert |
+| Aktuelles Loch wird verwendet | ✅ | Entfernung folgt dem Loch der Scorecard |
+| Loch manuell änderbar | ✅ | „← Loch“ / „Loch →“, Lochauswahl, „Zu Loch n (Scorecard)“; ändert nie die Scorecard (E2E) |
+| Distance View schnell erreichbar | ✅ | ein Tipp auf „◎ 151 m“ in der Fußzeile jedes Lochs |
+| Scorecard funktioniert weiterhin | ✅ | E2E „Scorecard funktioniert ohne GPS weiter“; Abschnitt J unverändert grün |
+| Runde funktioniert ohne GPS | ✅ | ohne Berechtigung, Signal oder Gründaten normal spielbar (E2E M: verweigerte Berechtigung, Signalverlust; `roundGps.test.ts`: Platz ohne Gründaten) |
+| **Backend** | | |
+| Datenmodell erweitert | ✅ | `hole_geo` mit Prüfregeln (Bereich, paarweise, Loch 1–36), Kaskade beim Löschen |
+| Migration vorhanden | ✅ | `drizzle/0004_hole_geo.sql`, nur optionale Felder, automatisch beim Start angewendet |
+| API sauber integriert | ✅ | bestehende Platz-Endpunkte und Datensatz liefern `holeGeo`; `PUT /api/me/preferences` mit `distanceUnit`; `/api/admin/export?format=gps` (`docs/openapi.yaml`) |
+| Keine bestehende WHS-Logik verändert | ✅ | keine Änderung in `src/rules/` und `src/lib/whs/`; 231 Engine-Tests grün |
+| Keine doppelte Course-Logik | ✅ | Grün-Koordinaten in den bestehenden Platzdaten; `mergeGreenUpdates`/`greenWarnings` für beide Editionen; kein eigener GPS-Platzdienst |
+| Admin kann GPS-Daten verwalten | ✅ | „GPS-Daten“ je Platz (Eingabe, „GPS-Position verwenden“, Warnungen, OSM-Link), CSV mit Vorschau, Export, Abdeckung „18/18 ✓“, Datenqualität; nur mit `courses.write`, protokolliert (E2E G) |
+| **Apple Watch** | | |
+| Watch-App/Integration technisch sauber umgesetzt | ⚠️ | vollständiger Quellcode (`native/apple/`: HCPGolfKit, iPhone-App, watchOS-App, XcodeGen); **nicht kompiliert, nicht auf Geräten getestet** (keine Xcode-/Swift-Toolchain in der Build-Umgebung) |
+| Aktuelles Loch, Entfernung, Green Target, GPS-Status angezeigt | ✅ | `DistanceView.swift`; gleiche Anzeige-Logik in `watchDisplay` (TypeScript) und `WatchDisplay` (Swift) mit gemeinsamen Testwerten; E2E über die Browser-Vorschau `/member/watch/` |
+| iPhone/Watch-Synchronisation | ✅ Protokoll · ⚠️ Gerät | Protokoll v1 (state/patch/heartbeat, epoch/seq) in `watch.test.ts`; E2E Vorschau 151 → 148 m, Lochwechsel, Befehl von der Watch |
+| Verbindungsverlust behandelt | ✅ | „Verbindung verloren“ nach 15 s, letzte Entfernung abgeblendet mit Alter (Unit + E2E Vorschau) |
+| Veraltete Daten gekennzeichnet | ✅ | „vor 0:18 min“ ab 10 s, „GPS-Daten veraltet“ ab 60 s |
+| Keine erneute Anmeldung | ✅ | Watch ohne Konto; iPhone-App nutzt die Sitzung der Web-App |
+| **Datenschutz** | | |
+| GPS nur bei aktiver Runde | ✅ | `shouldTrack`; E2E „Kein Standort ohne aktive Runde“, „Übersicht vor dem Abschluss – GPS pausiert“ |
+| Location Tracking wird beendet | ✅ | Pause, Verlassen, Abschluss, verborgene Seite; E2E „Runde beendet → Standort gestoppt“ |
+| Keine Speicherung des Bewegungsverlaufs | ✅ | nur die letzte Position im Arbeitsspeicher, verworfen beim Stoppen; keine Übertragung an den Server |
+| Permission Flow vorhanden | ✅ | Texte nach §39/§40; die Systemabfrage erst nach „Standort aktivieren“ |
+| **Tests** | | |
+| Distanzberechnung, ungültige Koordinaten | ✅ | `distance.test.ts`, `geo.test.ts`, DB-Prüfregel; E2E G „Breite 999 wird abgelehnt“ |
+| Fehlende Green-Daten, GPS-Ausfall, schlechte Accuracy, Lochwechsel, Round End | ✅ | `roundGps.test.ts`; E2E M |
+| Watch Sync, Watch Disconnect | ✅ | `watch.test.ts` (15 gemeinsame Abläufe, auch in Swift); E2E M über die Vorschau |
+
+Außerdem:
+- `Permissions-Policy: geolocation=(self)` in beiden Editionen (vorher sperrte `geolocation=()` im Webspace den
+  Standort).
+- Platzdaten der laufenden Runde auf dem Gerät für Funklöcher (E2E „Offline – Entfernung ohne Serveranfrage“).
+- Barrierefreiheit: Vorlesetext der Entfernung, `aria-live`, `aria-pressed`, Kontrast, Dunkelmodus.
+- Deutsch mit vorbereitetem Englisch.
+
+**Bewusste Grenzen:**
+- Die Apple-Watch-Apps sind nicht gebaut und nicht auf Geräten getestet; der Testplan steht in
+  `native/apple/README.md`.
+- Mitgeliefert werden keine Grün-Koordinaten (keine erfundenen Daten).
+- Keine automatische Locherkennung.
+- Im Browser pausiert der Standort bei gesperrtem Gerät; die iPhone-App rechnet dann nativ weiter.
+- Kein Service Worker, wie in 2.3.
 
 ## Version 2.3 – Mobile Rundeneingabe als eigenständige Scorecard (Master-Prompt, Definition of Done §161)
 
@@ -135,7 +202,7 @@ Ergebnis: **Webspace 63/63, Node 64/64 Prüfungen** (Stand 2.1.0) (Node zusätzl
 | Lade-, Leer- und Fehlerzustände (Skeleton, Retry), Toasts, Bestätigungsdialoge | ✅ |
 | Barrierefreiheit: Labels, `aria-live`, Fokus, Tastatur, `prefers-reduced-motion`, Kontrast (hell/dunkel) | ✅ |
 | Deutsche Formate (Komma, Datum), strukturierte Fehlermeldungen mit Feldbezug | ✅ |
-| OpenAPI-Dokumentation | ✅ `docs/openapi.yaml` (45 Pfade in 2.0; 65 seit 2.2) |
+| OpenAPI-Dokumentation | ✅ `docs/openapi.yaml` (45 Pfade in 2.0, 65 in 2.2, 66 seit 2.3; in 2.4 um `holeGeo`, `distanceUnit` und `format=gps` ergänzt) |
 
 ### Bewusste Abweichungen
 

@@ -45,6 +45,12 @@ Neue ZIP-Datei über die alte hochladen (der Ordner `data/` wird nicht überschr
 Schutzdateien) und `install.php` erneut aufrufen. Da die neuen Dateien wieder den Platzhalter enthalten, erkennt
 `install.php` die Aktualisierung und verlangt die Anmeldung mit einem Super-Admin-Konto.
 
+**Auf 2.4 (GPS):** `install.php` nach dem Hochladen unbedingt erneut aufrufen. Es schreibt die `.htaccess` mit
+`Permissions-Policy: … geolocation=(self)` neu. Die alte Fassung enthielt `geolocation=()` und sperrte damit den
+Standort; der Distance-Screen meldet dann „Standortzugriff nicht möglich“ bzw. „deaktiviert“. Der
+Golfplatz-Datensatz wird beim nächsten Speichern im Admin-Bereich als `schemaVersion: 2` (mit `holeGeo`)
+geschrieben. Ältere Datensätze bleiben lesbar.
+
 **Von Version 1:** `install.php` fragt einmalig das bisherige Admin-Passwort ab und legt damit das Super-Admin-Konto an
 (E-Mail frei wählbar, Passwort = bisheriges Admin-Passwort). Vorhandene Benutzer werden übernommen: Spieler → `USER`,
 Golfplatzpflege → `ADMIN`; Runden bleiben erhalten. Benutzer ohne E-Mail-Adresse melden sich weiter mit ihrem
@@ -78,7 +84,7 @@ golf-hcp-rechner/
     ├── settings.php                              Einstellungen aus dem Admin-Bereich (Registrierung, Impressum, …)
     ├── users.php                                 Konten (Passwort-Hashes, Rolle, Status, Token-Hashes)
     ├── userdata/<id>.php                         Profil, Runden, Entwürfe und Einstellungen je Mitglied (mit Revision)
-    ├── courses.php, backups/                     Golfplatz-Datensatz, die letzten 10 Fassungen
+    ├── courses.php, backups/                     Golfplatz-Datensatz inkl. GPS-Grünkoordinaten (layouts[].holeGeo), die letzten 10 Fassungen
     ├── community/                                Indexdateien: profiles.php, rounds/<id>.php, feed.php, admin.php, ranking/<datum>.php
     ├── avatars/<id>.php                          Profilbilder (nur über community.php abrufbar)
     ├── audit/<JJJJ-MM>.php                       Audit-Log
@@ -115,6 +121,8 @@ golf-hcp-rechner/
 | Doppelte Runden (Offline-Wiederholung der mobilen Scorecard) | Service-Schicht erkennt die Entwurfs-ID (`clientRef`) | zusätzlich prüft `me.php?action=round-save` die `clientRef` und legt keine zweite Runde an |
 | App-Installation (PWA) | `manifest.webmanifest`, Icons | gleich; `install.php` trägt den Basispfad ein und setzt den MIME-Typ `application/manifest+json` in der `.htaccess` |
 | Bayern-Importer (Discovery) | `npm run import:bavaria` | nicht auf dem Webspace; Ergebnis als CSV importieren oder JSON-Export der Node-Edition einspielen |
+| GPS-Grünkoordinaten (2.4) | Tabelle `hole_geo`, Server Actions | im Datensatz (`layouts[].holeGeo`), gleiche Formulare, Prüfungen und CSV (`src/lib/courses/geo.ts`, `greenCsv.ts`) über `courses-save`; Audit `GREENS_UPDATED` |
+| Entfernung zum Grün, Watch-Vorschau | im Browser | identisch (im Browser; PHP ist nicht beteiligt, Positionen erreichen den Server nicht) |
 
 Warum rechnet der Browser? PHP kann die TypeScript-Engine nicht ausführen, und eine zweite Implementierung der WHS-Regeln
 in PHP wäre eine Fehlerquelle. Der Adapter rechnet deshalb mit genau dem Code, den die Node-Edition auf dem Server
@@ -154,6 +162,8 @@ Anlagen bleiben unverändert).
   Konten, Runden (angelegt/geändert/gelöscht/importiert), Golfplatzänderungen, Einstellungen – jeweils mit Zeitpunkt,
   Admin, betroffenem Benutzer, Entität, altem und neuem Wert.
 - SMTP-Passwort und Sitzungsschlüssel verlassen den Server nicht (die Einstellungsseite zeigt nur „gesetzt“).
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(self)`: Den Standort darf nur die eigene Seite
+  abfragen, für die Entfernung zum Grün, nie eingebettete fremde Inhalte. Browser verlangen dafür HTTPS.
 - Alle Dateien in `data/` beginnen mit `<?php exit; ?>` – selbst wenn der Server `.htaccess` ignoriert, liefert ein
   direkter Aufruf keinen Inhalt.
 - Schreiben atomar (temporäre Datei + Umbenennen) und mit Dateisperre; vor jedem Speichern des Golfplatz-Datensatzes

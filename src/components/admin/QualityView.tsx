@@ -24,6 +24,7 @@ const LABELS: Record<QualityIssueCode, string> = {
   DRIVING_RANGE_WITH_LAYOUT: "Driving Range mit Platz",
   NINE_SIDE_MISSING: "9-Loch-Rating ohne Front/Back",
   POSSIBLE_DUPLICATE: "Mögliches Duplikat",
+  GREEN_GPS_INCOMPLETE: "GPS-Gründaten unvollständig",
 };
 
 export function QualityView({ report }: { report: QualityReport }) {
@@ -44,6 +45,8 @@ export function QualityView({ report }: { report: QualityReport }) {
         <Stat label="Anlagen mit mehreren Tee-Ratings" value={report.facilitiesWithMultipleTees} />
         <Stat label="Fehlende CR / Slope / Par" value={`${report.missingCourseRating} / ${report.missingSlope} / ${report.missingPar}`} />
         <Stat label="Doppelte Anlagen (Verdacht)" value={report.duplicates.length} />
+        <Stat label="GPS-fähige Anlagen (Green GPS vollständig)" value={report.facilitiesWithGreenGps} />
+        <Stat label="Plätze mit GPS-Lücken" value={report.layoutsWithPartialGreenGps} />
       </div>
       <Card className="mt-5">
         <CardHeader title="Befunde" subtitle={`${issues.length} von ${report.issues.length}`} />

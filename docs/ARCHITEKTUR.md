@@ -13,7 +13,10 @@ src/lib/member/          Service-Schicht Mitglied: Dokument (Profil, Runden, Ent
 src/lib/api/             API-Adapter: client.ts (Schnittstellen + lazy `api`), node.ts, webspace.ts, transport.ts, types.ts
 src/lib/auth/            Rollen und Berechtigungen (permissions.ts), Formularvalidierung, sichere Weiterleitung
 src/lib/courses/         Platzdaten-Logik: Rating-Auswahl, Suche, Duplikate, CSV, Qualität, Validierung,
-                         JSON-Datensatz-Operationen (dataset.ts), Datenzugriff im Browser (client.ts)
+                         JSON-Datensatz-Operationen (dataset.ts), Datenzugriff im Browser (client.ts);
+                         geo.ts / greenCsv.ts = Grün-Koordinaten je Loch, offlineCache.ts = Platzdaten auf dem Gerät
+src/lib/gps/             GPS (seit 2.4, ohne React): LocationService, PositionFilter, DistanceEngine (Vincenty),
+                         Anzeige-Regeln, Rundenstatus → Standort (roundGps.ts), watch/ = Watch-Protokoll v1 + Transport
 src/lib/importer/        Parser der BGV-Clubübersicht (Discovery)
 src/lib/rounds/          Wizard-Formularzustand → unveränderliche Runde; holeFlow.ts = Ablauf der mobilen Scorecard
                          (Schritte, Relevanz der Fragen, sichere Folgerungen, Summen – ohne WHS-Berechnung)
@@ -29,12 +32,14 @@ src/app/member/          Mitgliederbereich (Layout: MemberShell)
 src/app/admin/           Admin-Bereich (Layout: AdminShell); (courses)/ = Golfplatzverwaltung
 src/components/          UI: layout/ (Shells), session/, ui/ (Feedback, Dialoge), auth/, member/, admin/, courses/;
                          member/mobile/ = eigenständige mobile Scorecard (Smartphone, Tablet hochkant), siehe
-                         docs/MOBILE-RUNDENEINGABE.md – gleiche API und Eingabe wie member/wizard/ (Desktop)
+                         docs/MOBILE-RUNDENEINGABE.md – gleiche API und Eingabe wie member/wizard/ (Desktop);
+                         gps/ = Distance-Screen, Schnellzugriff, Watch-Vorschau (docs/GPS-DISTANZ.md)
 webspace/php/            install.php, gate.php, api/*.php (auth, me, community, admin, courses; _community.php =
                          PHP-Fassung der Projektion, per Paritätstest abgeglichen), Schutzdateien
 data/seed/               mitgelieferte Golfplatz-Startdaten (JSON-Datensatz)
 scripts/                 Bayern-Importer, DB-Check, Startdaten, create-admin, build-webspace.mjs
-tests/                   Vitest (Engine, Service-Schicht, Rechte, PHP-API)   e2e/  Browser-Abläufe A–K
+native/apple/            iPhone-App (WKWebView + WatchConnectivity) und watchOS-App, gemeinsame Swift-Logik HCPGolfKit
+tests/                   Vitest (Engine, Service-Schicht, Rechte, PHP-API, GPS)   e2e/  Browser-Abläufe A–M
 ```
 
 Die Berechnungslogik hat keine Abhängigkeit zu React oder Next.js. React-Komponenten rechnen nicht: Sie importieren
@@ -45,7 +50,7 @@ nur `api` und die DTO-Typen aus `src/lib/api`. Texte zu Codes stehen in `src/lib
 | Bereich | Pfade | Layout | Schutz |
 |---|---|---|---|
 | Öffentlich | `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/golfplaetze`, `/methodik`, `/hilfe`, `/datenschutz`, `/impressum` | `PublicShell` | – |
-| Mitglied | `/member`, `/member/hcp`, `/member/rounds`, `/member/rounds/new`, `/member/rounds/view?id=`, `/member/rounds/stats?id=`, `/member/stats`, `/member/community`, `/member/community/member?id=`, `/member/community/round?member=&round=`, `/member/courses`, `/member/profile`, `/member/welcome`, `/member/password`, `/member/import`, `/member/tools` | `MemberShell` (Desktop-Navigation, mobile Leiste unten, „+ Runde“) | angemeldet |
+| Mitglied | `/member`, `/member/hcp`, `/member/rounds`, `/member/rounds/new`, `/member/rounds/view?id=`, `/member/rounds/stats?id=`, `/member/stats`, `/member/community`, `/member/community/member?id=`, `/member/community/round?member=&round=`, `/member/courses`, `/member/profile`, `/member/welcome`, `/member/password`, `/member/import`, `/member/tools`, `/member/watch` (Watch-Vorschau) | `MemberShell` (Desktop-Navigation, mobile Leiste unten, „+ Runde“) | angemeldet |
 | Admin | `/admin`, `/admin/users`, `/admin/users/view?id=`, `/admin/users/impersonate?id=`, `/admin/rounds`, `/admin/community`, `/admin/courses`, `/admin/ratings`, `/admin/sources`, `/admin/data-quality`, `/admin/duplicates`, `/admin/import`, `/admin/changes`, `/admin/rules`, `/admin/system`, `/admin/logs`, `/admin/permissions`, `/admin/settings`, `/admin/search` | `AdminShell` (Seitenleiste nach Berechtigung, globale Suche) | `admin.access` + Berechtigung je Seite/Aktion |
 
 Detailseiten verwenden Query-Parameter (`?id=`), weil die Webspace-Edition ein statischer Export ist; die Node-Edition
@@ -99,6 +104,8 @@ veraltetem Stand), Audit-Log und Mail. Die UI ist in beiden Fällen identisch un
 | Mitgliederdaten | `member_data` (JSON-Dokument je Benutzer, Revision, Zeilensperre) | `data/userdata/<id>.php` (gleiche Struktur, Revision, Dateisperre) |
 | Audit/Mail | `audit_log`, `mail_log`, `error_log` | `data/audit/`, `data/logs/`, `data/mail-outbox/` |
 | Golfplatzdaten | PostgreSQL/PGlite über `src/server/courseRepository.ts`, Server Actions | JSON-Datensatz über `src/lib/courses/dataset.ts` + `admin.php?action=courses-save` |
+| Grün-Koordinaten (2.4) | Tabelle `hole_geo` | `layouts[].holeGeo` im Datensatz (`schemaVersion: 2`) – gleiche Regeln (`mergeGreenUpdates`) |
+| `Permissions-Policy` | `next.config.ts` (`headers()`) | `.htaccess` aus `install.php` – jeweils `geolocation=(self)` |
 | Seitenschutz | `proxy.server.ts` + Server-Layouts | `gate.php` + `.htaccess` |
 
 Gemeinsam: alle Seiten außer `*.server.tsx`/`*.static.tsx`, die komplette Engine und Service-Schicht, die Admin-Formulare
@@ -154,6 +161,8 @@ layouts        Platz/Layout (9_HOLE, 18_HOLE, 27_HOLE, 36_HOLE, SHORT_COURSE; Ko
 rating_sets    je Geschlecht, Abschlag, 9/18 Loch, Front/Back Nine, Gültig ab/bis; Par, CR, Slope, Länge;
                Quelle (Typ, URL), geprüft am, verifiziert, Vertrauen, aktiv
 holes          Loch: Par, Stroke Index, Längen, optional je Abschlag/Geschlecht
+hole_geo       Geodaten je Platz und Loch (nicht je Abschlag): Grün Front/Mitte/Back, vorbereitet Grünfläche
+               (GeoJSON), Fahne mit Zeitpunkt, Abschlagpositionen; Quelle (MANUAL/DEVICE_GPS/CSV_IMPORT/MAP) – 0004
 change_log     Protokoll aller Änderungen (Admin, CSV-Import, Importer)
 import_runs    Importläufe
 users          Konto: E-Mail, Name, Rolle, Status (ACTIVE/DISABLED/LOCKED), Passwort-Hash, E-Mail bestätigt,
@@ -172,7 +181,8 @@ app_settings, mail_log, error_log   Einstellungen (inkl. Sitzungs-Secret, falls 
 player_profiles, rounds, app_users, app_user_data   Tabellen der Version 1 (werden von 0002 übernommen, nicht mehr beschrieben)
 ```
 
-Constraints in der Datenbank: Slope 55–155, Par 3–6 je Loch, `verified` nur mit CR, Slope, Par und Quelle.
+Constraints in der Datenbank: Slope 55–155, Par 3–6 je Loch, `verified` nur mit CR, Slope, Par und Quelle;
+Grün-Koordinaten nur im gültigen Bereich (Breite ±90, Länge ±180) und paarweise.
 Driving Ranges können keine Layouts erhalten (Repository-Regel).
 
 Eine gespeicherte Runde enthält einen **Snapshot** des verwendeten Ratings (CR, Slope, Par, Abschlag, Layout, Quelle,
@@ -180,6 +190,28 @@ Gültigkeit). Ein ungeprüftes Rating wird nur übernommen, wenn der Spieler gen
 Scorekarte bestätigt hat (`confirmRating`, im Snapshot `playerConfirmed: true`); weichen die hinterlegten Werte
 inzwischen ab, lehnt das Backend mit `RATING_CHANGED` ab. Spätere Änderungen an den Platzdaten verändern historische Runden nicht. Die Rating-Auswahl im Wizard
 wählt das zum Spieldatum gültige Rating (`selectRatingSet`).
+
+## GPS: Entfernung zum Grün (seit 2.4)
+
+```
+RoundGpsController (Rundenstatus der Scorecard: ACTIVE / PAUSED / COMPLETED)
+      │ Start / Stopp
+      ▼
+Geolocation ─► LocationService ─► PositionFilter ─► DistanceEngine ◄── Grün aus LayoutDto.holeGeo
+                                                          │
+                                                          ▼
+                                               distanceView / format ─► Distance-Screen, Schnellzugriff
+                                                          │
+                                                          └─► WatchSync ─► iPhone-App ─► Apple Watch
+```
+
+- Die Entfernung entsteht rein auf dem Gerät: Positionen verlassen es nicht, es gibt keinen Server-Endpunkt für
+  Standorte.
+- Grün-Koordinaten sind Teil der bestehenden Platzdaten (DTO, Repository, Datensatz, CSV, Admin). Es gibt keinen
+  eigenen GPS-Dienst. Die WHS-Engine ist nicht betroffen.
+- Alle Schwellen stehen in `src/lib/gps/config.ts`. Web-App und Swift-Paket `HCPGolfKit` teilen die Testwerte
+  `tests/fixtures/gps-vectors.json`.
+- Details: `docs/GPS-DISTANZ.md`, native Apps: `native/apple/README.md`.
 
 ## Diagrammfarben
 
@@ -211,3 +243,6 @@ unveränderten WHS-Feldern `visibility`, `holeStats`, `moderation` und `computed
   Stelle, die Felder für andere Mitglieder freigibt – nie E-Mail, interne ID, private/ausgeblendete Runden oder nicht
   freigegebene Notizen. Admins können Freigaben nur ausschalten und Runden ausblenden (protokolliert), nie einschalten.
 - Fehler: strukturiert (`{ error: { code, message, fieldErrors } }`), Stacktraces nur im Serverprotokoll.
+- Standort (2.4): nur während einer aktiven Runde und nach Zustimmung; nur die letzte gefilterte Position im
+  Arbeitsspeicher, kein Verlauf, keine Übertragung. `Permissions-Policy: geolocation=(self)` erlaubt die Abfrage nur
+  der eigenen Seite. Grün-Koordinaten ändern nur Konten mit `courses.write` (serverseitig geprüft, protokolliert).

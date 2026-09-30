@@ -2,6 +2,7 @@
  * Datenverträge zwischen Frontend und Backend (beide Editionen liefern exakt diese Strukturen).
  * Das Frontend zeigt nur an – berechnet wird im Backend bzw. in der Service-Schicht (src/lib/member).
  */
+import type { DistanceUnit } from "@/lib/gps/types";
 import type { Permission, Role, UserStatus } from "@/lib/auth/permissions";
 import type { CommunityFlags, CommunitySettings, MyRanking, RoundModeration, RoundVisibility } from "@/lib/community/types";
 import type { HoleStat, RoundStatistics } from "@/lib/stats/types";
@@ -261,12 +262,15 @@ export interface MemberCourseLists {
 }
 
 export type RoundEntryMode = "ASK" | "QUICK" | "DETAILED";
+export type { DistanceUnit };
 
 export interface MemberPreferences {
   favorites: string[];
   homeCourseId: string | null;
   /** Rundeneingabe auf dem Smartphone: Standard „Schnell“, „Detailliert“ oder bei jeder Runde fragen */
   roundEntryMode: RoundEntryMode;
+  /** Entfernungen im GPS-Feature: Meter (Standard) oder Yards */
+  distanceUnit: DistanceUnit;
 }
 
 export interface MemberProfileData {

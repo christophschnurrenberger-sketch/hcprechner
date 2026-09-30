@@ -49,6 +49,7 @@ function layout(overrides: Partial<LayoutDto> = {}): LayoutDto {
     notes: null,
     ratingSets: [],
     holes: [],
+    holeGeo: [],
     ...overrides,
   };
 }

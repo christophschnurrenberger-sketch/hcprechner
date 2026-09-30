@@ -3,17 +3,23 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from "react";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, CloudOff, Flag, Loader2, MapPin, PartyPopper, RefreshCw, Star, Trophy, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, CloudOff, Flag, Loader2, MapPin, PartyPopper, RefreshCw, Star, Target, Trophy, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { userMessage } from "@/lib/api/errors";
 import type { MemberCourseLists, RoundEntryMode, RoundSaveResult } from "@/lib/api/types";
 import { VISIBILITY_LABELS } from "@/lib/community/policy";
 import type { MyRanking } from "@/lib/community/types";
 import { fetchCourse } from "@/lib/courses/client";
+import { greenForHole, layoutHasGreens } from "@/lib/courses/geo";
+import { rememberCourse } from "@/lib/courses/offlineCache";
 import { availableTees, holesFor, type TeeOption } from "@/lib/courses/ratingSelection";
 import { TEE_SWATCH } from "@/lib/courses/tees";
 import type { CourseDto, LayoutDto } from "@/lib/courses/types";
 import type { CourseSummary } from "@/lib/courses/summary";
+import type { GreenTarget } from "@/lib/gps/distanceEngine";
+import type { DistanceUnit, RoundStatus } from "@/lib/gps/types";
+import { hasNativeWatchBridge, type RoundContext } from "@/lib/gps/watch/bridge";
+import type { WatchCommand } from "@/lib/gps/watch/protocol";
 import { cn, formatDate, formatDecimal, formatHcp, formatSigned } from "@/lib/format";
 import {
   afterHole,
@@ -44,6 +50,10 @@ import { CoursePicker } from "@/components/courses/CoursePicker";
 import { roundHref, roundStatsHref } from "@/components/member/RoundList";
 import { useMyCommunity, usePublicRoundsEnabled, VisibilityChooser } from "@/components/community/Visibility";
 import { applyPatch, holesChoiceOf, holesPatch, stepErrors, toRoundInput, type HolesChoice, type WizardState } from "@/components/member/wizard/wizardState";
+import { DistanceButton } from "@/components/gps/DistanceButton";
+import { DistanceScreen } from "@/components/gps/DistanceScreen";
+import { useRoundGps } from "@/components/gps/useRoundGps";
+import { useWatchBridge } from "@/components/gps/useWatchBridge";
 import { haptic, isNetworkError, useDraftAutosave, useOnline, useWakeLock } from "./hooks";
 import { clearLocalDraft, lastEntryMode, rememberEntryMode, saveLocalDraft, type LocalRoundDraft } from "./localDraft";
 import { PuttsScreen, ScoreScreen, StatsScreen } from "./screens";
@@ -79,6 +89,8 @@ export interface MobileWizardProps {
   /** Fortsetzen: Erfassungsart und Position (sonst Start) */
   resume?: { mode: EntryMode; pos: FlowPos } | null;
   hcpi: number | null;
+  /** Einheit der GPS-Entfernung (Profil), Standard Meter */
+  distanceUnit?: DistanceUnit;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +102,7 @@ export interface MobileWizardProps {
  * Datenmodell, API und Berechnung sind dieselben wie in der Desktop-Eingabe (`WizardState` → `toRoundInput`);
  * Score Differential und Handicap Index berechnet ausschließlich das Backend.
  */
-export function MobileRoundWizard({ initial, initialCourse, editId, draftId, lists, entryPref, resume, hcpi }: MobileWizardProps) {
+export function MobileRoundWizard({ initial, initialCourse, editId, draftId, lists, entryPref, resume, hcpi, distanceUnit = "M" }: MobileWizardProps) {
   const router = useRouter();
   const toast = useToast();
   const { user, settings } = useSession();
@@ -112,6 +124,10 @@ export function MobileRoundWizard({ initial, initialCourse, editId, draftId, lis
   const [result, setResult] = useState<RoundSaveResult | null>(null);
   const [pending, setPending] = useState(false);
   const [ranking, setRanking] = useState<MyRanking | null>(null);
+  const [distanceOpen, setDistanceOpen] = useState(false);
+  /** in der Entfernungsansicht gewähltes Loch – gilt nur, solange die Scorecard auf demselben Loch steht */
+  const [distanceOverride, setDistanceOverride] = useState<{ hole: number; base: number | null } | null>(null);
+  const [gpsTarget, setGpsTarget] = useState<GreenTarget>("green_center");
   const lastAdvance = useRef(0);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const posRef = useRef(pos);
@@ -144,6 +160,68 @@ export function MobileRoundWizard({ initial, initialCourse, editId, draftId, lis
   const inRound = started && pos.step !== "RESULT";
 
   useWakeLock(inRound);
+
+  // -------------------------------------------------------------- GPS: Entfernung zum Grün (Zusatz, blockiert nie die Scorecard)
+  // Standort nur bei aktiver Runde; Übersicht vor dem Abschluss = Pause, Ergebnis/Bearbeiten = beendet.
+  const roundStatus: RoundStatus = editId || pos.step === "RESULT" ? "COMPLETED" : !started || pos.step === "SETUP" ? "NOT_STARTED" : pos.step === "FINAL" ? "PAUSED" : "ACTIVE";
+  const hasGreens = ws.courseKind === "DB" && layoutHasGreens(layout);
+  const scorecardHole: number | null =
+    roundStatus === "NOT_STARTED" || views.length === 0
+      ? null
+      : isHoleStep(pos.step)
+        ? (views[Math.min(pos.hole, views.length - 1)]?.number ?? null)
+        : pos.step === "FRONT_NINE"
+          ? (views[Math.min(9, views.length - 1)]?.number ?? null)
+          : pos.step === "FINAL" || pos.step === "RESULT"
+            ? views[views.length - 1].number
+            : views[0].number;
+  const distanceHole = distanceOverride && distanceOverride.base === scorecardHole ? distanceOverride.hole : scorecardHole;
+  const green = hasGreens && layout && distanceHole !== null ? greenForHole(layout, distanceHole) : null;
+  const gps = useRoundGps({ round: roundStatus, courseId: ws.courseKind === "DB" ? ws.courseId : null, holeNumber: distanceHole, green, hasGreens, target: gpsTarget, unit: distanceUnit });
+  const showDistance = roundStatus === "ACTIVE" && hasGreens;
+  const distanceHoles = useMemo(() => views.map((v) => ({ number: v.number, par: v.par })), [views]);
+  const chooseDistanceHole = useCallback((n: number) => setDistanceOverride(n === scorecardHole ? null : { hole: n, base: scorecardHole }), [scorecardHole]);
+
+  // Apple Watch (über die iPhone-App) bzw. Browser-Vorschau: nur Loch, Entfernung, Ziel, GPS-Status
+  const onWatchCommand = useCallback(
+    (command: WatchCommand) => {
+      if (command.type === "target") return setGpsTarget(command.target);
+      const index = distanceHoles.findIndex((h) => h.number === distanceHole);
+      const next = distanceHoles[index + command.delta];
+      if (index >= 0 && next) chooseDistanceHole(next.number);
+    },
+    [distanceHoles, distanceHole, chooseDistanceHole],
+  );
+  const watchContext = useMemo<RoundContext | null>(
+    () =>
+      showDistance && layout && hasNativeWatchBridge()
+        ? {
+            v: 1,
+            roundActive: true,
+            courseId: ws.courseId,
+            unit: distanceUnit === "YD" ? "yd" : "m",
+            target: gpsTarget === "pin" ? "green_center" : gpsTarget,
+            hole: distanceHole,
+            holes: distanceHoles.map((h) => {
+              const g = greenForHole(layout, h.number);
+              return { number: h.number, par: h.par, green: g ? { front: g.front, center: g.center, back: g.back } : null };
+            }),
+          }
+        : null,
+    [showDistance, layout, ws.courseId, distanceUnit, gpsTarget, distanceHole, distanceHoles],
+  );
+  const watch = useWatchBridge({
+    view: gps.view,
+    roundActive: showDistance,
+    par: distanceHoles.find((h) => h.number === distanceHole)?.par ?? null,
+    context: watchContext,
+    onCommand: onWatchCommand,
+  });
+
+  // Platzdaten der laufenden Runde auf dem Gerät vorhalten (Funkloch, erneutes Öffnen ohne Netz)
+  useEffect(() => {
+    if (started && !editId && course) rememberCourse(course);
+  }, [started, editId, course]);
 
   // Automatisch sichern (nur neue Runden)
   const draft: LocalRoundDraft | null = useMemo(
@@ -593,7 +671,30 @@ export function MobileRoundWizard({ initial, initialCourse, editId, draftId, lis
         </div>
       </main>
 
-      <StickyFooter>{footer}</StickyFooter>
+      <StickyFooter>
+        {showDistance && footer ? (
+          <div className="flex gap-2">
+            <DistanceButton view={gps.view} onOpen={() => setDistanceOpen(true)} />
+            <div className="min-w-0 flex-1">{footer}</div>
+          </div>
+        ) : (
+          footer
+        )}
+      </StickyFooter>
+
+      {distanceOpen && showDistance && (
+        <DistanceScreen
+          view={gps.view}
+          holes={distanceHoles}
+          scorecardHole={scorecardHole}
+          courseName={courseName ?? ""}
+          onHole={chooseDistanceHole}
+          onTarget={setGpsTarget}
+          onActivate={gps.activate}
+          onClose={() => setDistanceOpen(false)}
+          watchConnected={watch.connected}
+        />
+      )}
 
       {/* ------------------------------------------------ Sheets */}
       <BottomSheet
@@ -725,6 +826,11 @@ function SetupScreen({
         <span className="text-sm font-medium text-brand">{course ? "ändern" : "wählen"}</span>
       </button>
       {errors.course && <p className="-mt-3 text-sm font-medium text-critical">{errors.course}</p>}
+      {!editing && layoutHasGreens(layout) && (
+        <p className="-mt-3 flex items-center gap-1.5 text-sm text-ink-3" data-gps-available>
+          <Target className="h-4 w-4 text-brand" aria-hidden /> GPS-Entfernung zum Grün verfügbar
+        </p>
+      )}
 
       {course && layouts.length > 1 && (
         <ChoiceRow label="Platz" value={ws.layoutId} allowClear={false} onChange={(layoutId) => layoutId && patch({ layoutId, teeColor: null, strokes: [] })} options={layouts.map((l) => ({ value: l.id, label: <span className="truncate px-1 text-sm">{l.name}</span> }))} />

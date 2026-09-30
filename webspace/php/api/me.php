@@ -373,13 +373,15 @@ switch ($action) {
         $home = me_id_ok($prefs['homeCourseId'] ?? null) ? $prefs['homeCourseId'] : null;
         $onboarded = is_string($prefs['onboardedAt'] ?? null) ? substr($prefs['onboardedAt'], 0, 40) : null;
         $entryMode = in_array($prefs['roundEntryMode'] ?? null, ['ASK', 'QUICK', 'DETAILED'], true) ? $prefs['roundEntryMode'] : null;
-        $res = hcp_with_member_doc($uid, function (array &$doc) use ($favorites, $home, $onboarded, $entryMode, $body) {
+        $unit = in_array($prefs['distanceUnit'] ?? null, ['M', 'YD'], true) ? $prefs['distanceUnit'] : null;
+        $res = hcp_with_member_doc($uid, function (array &$doc) use ($favorites, $home, $onboarded, $entryMode, $unit, $body) {
             $before = $doc['preferences']['homeCourseId'] ?? null;
             $doc['preferences'] = [
                 'favorites' => array_slice($favorites, 0, 100),
                 'homeCourseId' => $home,
                 'onboardedAt' => $onboarded ?? ($doc['preferences']['onboardedAt'] ?? null),
                 'roundEntryMode' => $entryMode ?? ($doc['preferences']['roundEntryMode'] ?? 'ASK'),
+                'distanceUnit' => $unit ?? ($doc['preferences']['distanceUnit'] ?? 'M'),
             ];
             me_store_summary($doc, $body);
             return $before !== $home;

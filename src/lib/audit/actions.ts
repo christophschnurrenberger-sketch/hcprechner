@@ -34,6 +34,7 @@ export const AUDIT_ACTIONS = {
   RATING_UNVERIFIED: "Verifizierung entfernt",
   RATING_DEACTIVATED: "Rating deaktiviert",
   HOLES_UPDATED: "Lochdaten geändert",
+  GREENS_UPDATED: "GPS-Grünkoordinaten geändert",
   IMPORT_APPLIED: "Import übernommen",
   SETTINGS_CHANGED: "Einstellungen geändert",
   RULE_VERSION_CHANGED: "Regelversion geändert",
@@ -76,6 +77,7 @@ export const ADMIN_ACTIONS: readonly string[] = [
   "RATING_UNVERIFIED",
   "RATING_DEACTIVATED",
   "HOLES_UPDATED",
+  "GREENS_UPDATED",
   "IMPORT_APPLIED",
   "SETTINGS_CHANGED",
   "RULE_VERSION_CHANGED",
@@ -103,7 +105,7 @@ export const MEMBER_ACTIVITY: readonly string[] = [
 /** Kurs-Änderungsprotokoll (Datensatz) → Audit-Aktion. */
 export function courseChangeToAudit(entityType: string, action: string): AuditAction {
   if (entityType === "course") return action === "CREATE" ? "COURSE_CREATED" : action === "MERGE" ? "COURSE_MERGED" : "COURSE_UPDATED";
-  if (entityType === "layout") return action === "REPLACE_HOLES" ? "HOLES_UPDATED" : "LAYOUT_UPDATED";
+  if (entityType === "layout") return action === "REPLACE_HOLES" ? "HOLES_UPDATED" : action === "SET_GREENS" ? "GREENS_UPDATED" : "LAYOUT_UPDATED";
   if (action === "CREATE") return "RATING_CREATED";
   if (action === "VERIFY") return "RATING_VERIFIED";
   if (action === "UNVERIFY") return "RATING_UNVERIFIED";

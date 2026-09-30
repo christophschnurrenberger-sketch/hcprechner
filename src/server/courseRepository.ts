@@ -4,22 +4,32 @@
  */
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, type Db } from "@/db/client";
-import { changeLog, courses, holes, importRuns, layouts, ratingSets } from "@/db/schema";
+import { changeLog, courses, holeGeo, holes, importRuns, layouts, ratingSets } from "@/db/schema";
 import type { CsvImportPlan, ParsedCsvRow } from "@/lib/courses/csv";
+import { mergeGreenUpdates, type GreenUpdate } from "@/lib/courses/geo";
+import type { GreenCsvPlan } from "@/lib/courses/greenCsv";
 import { normalizeCourseName, slugify } from "@/lib/courses/normalize";
 import type {
   CourseDto,
   FacilityType,
+  GeoPoint,
+  GeoSource,
+  GreenPolygon,
   HoleDto,
+  HoleGeoDto,
   LayoutDto,
   LayoutType,
   RatingSetDto,
+  TeePosition,
 } from "@/lib/courses/types";
 import {
   courseInputSchema,
+  greenInputSchema,
+  greenPolygonSchema,
   holeInputSchema,
   layoutInputSchema,
   ratingSetInputSchema,
+  teePositionSchema,
   type CourseInput,
   type HoleInput,
   type LayoutInput,
@@ -40,6 +50,7 @@ type CourseRow = typeof courses.$inferSelect;
 type LayoutRow = typeof layouts.$inferSelect;
 type RatingRow = typeof ratingSets.$inferSelect;
 type HoleRow = typeof holes.$inferSelect;
+type HoleGeoRow = typeof holeGeo.$inferSelect;
 
 function toRatingDto(r: RatingRow): RatingSetDto {
   return {
@@ -81,11 +92,34 @@ function toHoleDto(h: HoleRow): HoleDto {
   };
 }
 
+const point = (lat: number | null, lng: number | null): GeoPoint | null => (lat === null || lng === null ? null : { latitude: lat, longitude: lng });
+
+function toHoleGeoDto(g: HoleGeoRow): HoleGeoDto {
+  const polygon = greenPolygonSchema.safeParse(g.greenPolygon);
+  const tees = Array.isArray(g.teePositions) ? g.teePositions.flatMap((t) => (teePositionSchema.safeParse(t).success ? [t as TeePosition] : [])) : [];
+  const pin = point(g.pinLat, g.pinLng);
+  return {
+    layoutId: g.layoutId,
+    holeNumber: g.holeNumber,
+    green: {
+      front: point(g.greenFrontLat, g.greenFrontLng),
+      center: point(g.greenCenterLat, g.greenCenterLng),
+      back: point(g.greenBackLat, g.greenBackLng),
+      polygon: polygon.success ? (polygon.data as GreenPolygon) : null,
+      pin: pin ? { ...pin, setAt: (g.pinSetAt ?? g.updatedAt).toISOString() } : null,
+    },
+    tees,
+    source: (g.source as GeoSource | null) ?? null,
+    updatedAt: g.updatedAt.toISOString(),
+  };
+}
+
 function assemble(
   courseRows: CourseRow[],
   layoutRows: LayoutRow[],
   ratingRows: RatingRow[],
   holeRows: HoleRow[],
+  geoRows: HoleGeoRow[] = [],
 ): CourseDto[] {
   const ratingsByLayout = new Map<string, RatingSetDto[]>();
   for (const r of ratingRows) {
@@ -98,6 +132,12 @@ function assemble(
     const list = holesByLayout.get(h.layoutId) ?? [];
     list.push(toHoleDto(h));
     holesByLayout.set(h.layoutId, list);
+  }
+  const geoByLayout = new Map<string, HoleGeoDto[]>();
+  for (const g of geoRows) {
+    const list = geoByLayout.get(g.layoutId) ?? [];
+    list.push(toHoleGeoDto(g));
+    geoByLayout.set(g.layoutId, list);
   }
   const layoutsByCourse = new Map<string, LayoutDto[]>();
   for (const l of layoutRows) {
@@ -119,6 +159,7 @@ function assemble(
           (b.validFrom ?? "").localeCompare(a.validFrom ?? ""),
       ),
       holes: (holesByLayout.get(l.id) ?? []).sort((a, b) => a.holeNumber - b.holeNumber),
+      holeGeo: (geoByLayout.get(l.id) ?? []).sort((a, b) => a.holeNumber - b.holeNumber),
     });
     layoutsByCourse.set(l.courseId, list);
   }
@@ -151,15 +192,16 @@ function assemble(
 
 export async function loadAllCourses(options: { includeInactive?: boolean; db?: Executor } = {}): Promise<CourseDto[]> {
   const db = options.db ?? (await getDb());
-  const [c, l, r, h] = await Promise.all([
+  const [c, l, r, h, g] = await Promise.all([
     options.includeInactive
       ? db.select().from(courses).orderBy(asc(courses.name))
       : db.select().from(courses).where(eq(courses.active, true)).orderBy(asc(courses.name)),
     db.select().from(layouts),
     db.select().from(ratingSets),
     db.select().from(holes),
+    db.select().from(holeGeo),
   ]);
-  return assemble(c, l, r, h);
+  return assemble(c, l, r, h, g);
 }
 
 export async function getCourse(idOrSlug: string, db?: Executor): Promise<CourseDto | null> {
@@ -172,13 +214,14 @@ export async function getCourse(idOrSlug: string, db?: Executor): Promise<Course
   if (rows.length === 0) return null;
   const layoutRows = await executor.select().from(layouts).where(eq(layouts.courseId, rows[0].id));
   const layoutIds = layoutRows.map((l) => l.id);
-  const [r, h] = layoutIds.length
+  const [r, h, g] = layoutIds.length
     ? await Promise.all([
         executor.select().from(ratingSets).where(inArray(ratingSets.layoutId, layoutIds)),
         executor.select().from(holes).where(inArray(holes.layoutId, layoutIds)),
+        executor.select().from(holeGeo).where(inArray(holeGeo.layoutId, layoutIds)),
       ])
-    : [[], []];
-  return assemble(rows, layoutRows, r, h)[0] ?? null;
+    : [[], [], []];
+  return assemble(rows, layoutRows, r, h, g)[0] ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +378,90 @@ export async function replaceHoles(layoutId: string, raw: unknown[], actor?: str
     if (input.length > 0) await tx.insert(holes).values(input.map((h) => ({ ...h, layoutId })));
     await logChange(tx, { entityType: "layout", entityId: layoutId, action: "REPLACE_HOLES", source: "ADMIN", changes: { count: input.length }, actor });
   });
+}
+
+/**
+ * GPS-Grünkoordinaten (Front/Mitte/Back) setzen – gleiche Regeln wie der Webspace-Datensatz (mergeGreenUpdates).
+ * Lochdaten, Ratings, Grünfläche, Fahne und Abschlagpositionen bleiben unverändert.
+ */
+export async function setGreenCoordinates(
+  layoutId: string,
+  raw: unknown[],
+  actor?: string,
+  source: ChangeSource = "ADMIN",
+  db?: Executor,
+): Promise<{ changed: number[]; removed: number[] }> {
+  const updates: GreenUpdate[] = raw.map((g) => {
+    const v = greenInputSchema.parse(g);
+    return { holeNumber: v.holeNumber, front: v.front, center: v.center, back: v.back, source: (v.source as GeoSource | null) ?? null };
+  });
+  const run = async (tx: Executor) => {
+    const [layout] = await tx.select().from(layouts).where(eq(layouts.id, layoutId));
+    if (!layout) throw new Error("Platz nicht gefunden");
+    const [holeRows, geoRows] = await Promise.all([
+      tx.select().from(holes).where(eq(holes.layoutId, layoutId)),
+      tx.select().from(holeGeo).where(eq(holeGeo.layoutId, layoutId)),
+    ]);
+    const now = new Date();
+    const merged = mergeGreenUpdates(
+      { id: layoutId, holesCount: layout.holesCount, holes: holeRows.map(toHoleDto), holeGeo: geoRows.map(toHoleGeoDto) },
+      updates,
+      now.toISOString(),
+    );
+    for (const n of merged.removed) await tx.delete(holeGeo).where(and(eq(holeGeo.layoutId, layoutId), eq(holeGeo.holeNumber, n)));
+    for (const n of merged.changed) {
+      const g = merged.holeGeo.find((x) => x.holeNumber === n)!;
+      const values = {
+        greenFrontLat: g.green.front?.latitude ?? null,
+        greenFrontLng: g.green.front?.longitude ?? null,
+        greenCenterLat: g.green.center?.latitude ?? null,
+        greenCenterLng: g.green.center?.longitude ?? null,
+        greenBackLat: g.green.back?.latitude ?? null,
+        greenBackLng: g.green.back?.longitude ?? null,
+        source: g.source,
+        updatedAt: now,
+      };
+      await tx
+        .insert(holeGeo)
+        .values({ layoutId, holeNumber: n, ...values })
+        .onConflictDoUpdate({ target: [holeGeo.layoutId, holeGeo.holeNumber], set: values });
+    }
+    if (merged.changed.length || merged.removed.length) {
+      await logChange(tx, { entityType: "layout", entityId: layoutId, action: "SET_GREENS", source, changes: { changed: merged.changed, removed: merged.removed }, actor });
+    }
+    return { changed: merged.changed, removed: merged.removed };
+  };
+  if (db) return run(db);
+  return (await getDb()).transaction((tx) => run(tx));
+}
+
+export interface GreenCsvApplyResult {
+  updatedHoles: number;
+  layouts: number;
+  skipped: number;
+}
+
+/** GPS-CSV nach Bestätigung übernehmen (alles oder nichts). */
+export async function applyGreenCsvPlan(plan: GreenCsvPlan, actor?: string): Promise<GreenCsvApplyResult> {
+  const byLayout = new Map<string, GreenUpdate[]>();
+  let skipped = 0;
+  for (const row of plan.rows) {
+    if (row.action === "INVALID" || row.action === "UNCHANGED" || !row.update || !row.layoutId) {
+      skipped += 1;
+      continue;
+    }
+    byLayout.set(row.layoutId, [...(byLayout.get(row.layoutId) ?? []), row.update]);
+  }
+  const db = await getDb();
+  let updatedHoles = 0;
+  await db.transaction(async (tx) => {
+    for (const [layoutId, updates] of byLayout) {
+      await setGreenCoordinates(layoutId, updates, actor, "CSV_IMPORT", tx);
+      updatedHoles += updates.length;
+    }
+    await tx.insert(importRuns).values({ kind: "CSV_GPS", status: "APPLIED", summary: { updatedHoles, layouts: byLayout.size, skipped }, finishedAt: new Date() });
+  });
+  return { updatedHoles, layouts: byLayout.size, skipped };
 }
 
 /** Führt eine doppelt angelegte Anlage in eine andere über (Plätze werden verschoben). */

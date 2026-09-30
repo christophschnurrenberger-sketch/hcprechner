@@ -1,5 +1,6 @@
 /** Aufbereitete, serialisierbare Daten für die Admin-Ansichten (beide Editionen). */
 import { findDuplicates, type DuplicateReason } from "./duplicates";
+import { courseGreenCoverage, type GreenCoverage } from "./geo";
 import { courseHasVerifiedRating } from "./ratingSelection";
 import type { CourseDto } from "./types";
 
@@ -17,6 +18,8 @@ export interface AdminCourseRow {
   hasVerifiedRating: boolean;
   active: boolean;
   verified: boolean;
+  /** GPS-Abdeckung (Grünmitte) über alle aktiven Plätze */
+  greenGps: Pick<GreenCoverage, "holes" | "withCenter" | "level">;
 }
 
 export function toAdminCourseRows(courses: readonly CourseDto[]): AdminCourseRow[] {
@@ -36,6 +39,7 @@ export function toAdminCourseRows(courses: readonly CourseDto[]): AdminCourseRow
       hasVerifiedRating: courseHasVerifiedRating(c),
       active: c.active,
       verified: c.verified,
+      greenGps: (({ holes, withCenter, level }) => ({ holes, withCenter, level }))(courseGreenCoverage(c)),
     };
   });
 }

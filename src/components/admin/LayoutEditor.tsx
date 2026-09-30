@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ExternalLink, Pencil, Plus } from "lucide-react";
+import { CheckCircle2, ExternalLink, LocateFixed, Pencil, Plus } from "lucide-react";
+import { coverageLabel, greenCoverage } from "@/lib/courses/geo";
 import { genderLabel, TEE_SWATCH } from "@/lib/courses/tees";
 import type { CourseDto, LayoutDto, RatingSetDto } from "@/lib/courses/types";
 import { SOURCE_TYPE_LABELS } from "@/lib/whs/messages";
 import { cn, formatDate, formatDecimal } from "@/lib/format";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import { HolesForm, LayoutForm, RatingSetForm } from "./AdminForms";
+import { GreensForm } from "./GreensForm";
 import { useAdminBackend } from "./AdminBackend";
 
 const LAYOUT_TYPE_LABELS: Record<string, string> = {
@@ -90,11 +92,13 @@ function LayoutCard({ course, layout }: { course: CourseDto; layout: LayoutDto }
   const [edit, setEdit] = useState(false);
   const [addRating, setAddRating] = useState(false);
   const [holes, setHoles] = useState(false);
+  const [greens, setGreens] = useState(false);
+  const gps = greenCoverage(layout);
   return (
     <Card>
       <CardHeader
         title={`${layout.name}${layout.active ? "" : " (inaktiv)"}`}
-        subtitle={`${LAYOUT_TYPE_LABELS[layout.type] ?? layout.type} · ${layout.holesCount} Löcher${layout.combinationName ? ` · ${layout.combinationName}` : ""} · ${layout.holes.length} Lochdaten`}
+        subtitle={`${LAYOUT_TYPE_LABELS[layout.type] ?? layout.type} · ${layout.holesCount} Löcher${layout.combinationName ? ` · ${layout.combinationName}` : ""} · ${layout.holes.length} Lochdaten · Green GPS ${coverageLabel(gps)}`}
         action={
           <>
             <Button size="sm" variant="ghost" onClick={() => setEdit((v) => !v)}>
@@ -102,6 +106,9 @@ function LayoutCard({ course, layout }: { course: CourseDto; layout: LayoutDto }
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setHoles((v) => !v)}>
               Lochdaten
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setGreens((v) => !v)} aria-expanded={greens}>
+              <LocateFixed className="h-4 w-4" /> GPS-Daten
             </Button>
             <Button size="sm" variant="subtle" onClick={() => setAddRating((v) => !v)}>
               <Plus className="h-4 w-4" /> Rating
@@ -112,6 +119,7 @@ function LayoutCard({ course, layout }: { course: CourseDto; layout: LayoutDto }
       <CardBody className="space-y-3">
         {edit && <LayoutForm courseId={course.id} layout={layout} onDone={() => setEdit(false)} />}
         {holes && <HolesForm layout={layout} />}
+        {greens && <GreensForm course={course} layout={layout} />}
         {addRating && <RatingSetForm layout={layout} onDone={() => setAddRating(false)} />}
         {layout.ratingSets.length === 0 ? (
           <p className="text-sm text-ink-3">Noch keine Rating-Sets. Werte nur aus offiziellen Quellen übernehmen – nie schätzen.</p>

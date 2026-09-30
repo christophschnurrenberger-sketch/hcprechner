@@ -4,6 +4,9 @@
  */
 import { ZodError } from "zod";
 import type { CsvImportPlan } from "./csv";
+import { parseCoordinatePair } from "./geo";
+import type { GreenCsvPlan } from "./greenCsv";
+import { GEO_SOURCES, type GeoPoint, type GeoSource } from "./types";
 
 export interface ActionState {
   ok: boolean;
@@ -30,8 +33,33 @@ export interface CsvPreviewState {
   text: string;
 }
 
+export interface GreenCsvApplySummary {
+  updatedHoles: number;
+  layouts: number;
+  skipped: number;
+}
+
+export interface GreenCsvPreviewState {
+  plan: GreenCsvPlan | null;
+  result: GreenCsvApplySummary | null;
+  error: string | null;
+  text: string;
+}
+
 export const initialActionState: ActionState = { ok: false, message: null };
 export const initialCsvState: CsvPreviewState = { plan: null, result: null, error: null, text: "" };
+export const initialGreenCsvState: GreenCsvPreviewState = { plan: null, result: null, error: null, text: "" };
+
+/** Validierungsfehler mit Zuordnung zu Formularfeldern (Anzeige direkt am Feld). */
+export class FormFieldError extends Error {
+  constructor(
+    message: string,
+    readonly fieldErrors: Record<string, string>,
+  ) {
+    super(message);
+    this.name = "FormFieldError";
+  }
+}
 
 /** Maximale CSV-Größe (Zeichen). */
 export const CSV_MAX_LENGTH = 5_000_000;
@@ -39,6 +67,7 @@ export const CSV_MAX_LENGTH = 5_000_000;
 export const actionOk = (message: string, extra: Partial<ActionState> = {}): ActionState => ({ ok: true, message, ...extra });
 
 export function actionFailure(error: unknown): ActionState {
+  if (error instanceof FormFieldError) return { ok: false, message: error.message, fieldErrors: error.fieldErrors };
   if (error instanceof ZodError) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of error.issues) fieldErrors[issue.path.join(".")] = issue.message;
@@ -86,6 +115,45 @@ export function parseHolesForm(fd: FormData): { layoutId: string; holes: Record<
   const sis = holes.map((h) => h.strokeIndex).filter((v) => v !== "");
   if (new Set(sis).size !== sis.length) throw new Error("Stroke Index doppelt vergeben.");
   return { layoutId, holes };
+}
+
+export interface GreenFormRow {
+  holeNumber: number;
+  front: GeoPoint | null;
+  center: GeoPoint | null;
+  back: GeoPoint | null;
+  source: GeoSource;
+}
+
+const COORDINATE_HINT = "Ungültig – Breite −90 bis 90, Länge −180 bis 180 (z. B. 47.941234, 10.312345)";
+
+/**
+ * GPS-Formular (je Loch Front/Mitte/Back als „Breite, Länge“) → Grünkoordinaten. Ungültige Werte werden
+ * nicht gespeichert, sondern am Feld gemeldet (Felder gf_n, gc_n, gb_n; Erfassungsart src_n).
+ */
+export function parseGreensForm(fd: FormData): { layoutId: string; greens: GreenFormRow[] } {
+  const layoutId = String(fd.get("layoutId") ?? "");
+  const count = Math.min(36, Math.max(0, Number(fd.get("count")) || 0));
+  const fieldErrors: Record<string, string> = {};
+  const greens: GreenFormRow[] = [];
+  const read = (key: string): GeoPoint | null => {
+    const parsed = parseCoordinatePair(String(fd.get(key) ?? ""));
+    if (parsed === "INVALID") {
+      fieldErrors[key] = COORDINATE_HINT;
+      return null;
+    }
+    return parsed;
+  };
+  for (let n = 1; n <= count; n++) {
+    const front = read(`gf_${n}`);
+    const center = read(`gc_${n}`);
+    const back = read(`gb_${n}`);
+    const src = String(fd.get(`src_${n}`) ?? "");
+    greens.push({ holeNumber: n, front, center, back, source: (GEO_SOURCES as readonly string[]).includes(src) ? (src as GeoSource) : "MANUAL" });
+  }
+  const invalid = Object.keys(fieldErrors).length;
+  if (invalid > 0) throw new FormFieldError(invalid === 1 ? "Eine Koordinate ist ungültig." : `${invalid} Koordinaten sind ungültig.`, fieldErrors);
+  return { layoutId, greens };
 }
 
 /** CSV-Text aus dem Upload-Formular (Datei oder Textfeld). */

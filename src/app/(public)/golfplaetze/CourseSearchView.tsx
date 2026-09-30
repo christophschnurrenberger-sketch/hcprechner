@@ -11,6 +11,7 @@ import { formatDecimal } from "@/lib/format";
 import { searchCoursesRemote } from "@/lib/courses/client";
 import type { CourseSummary } from "@/lib/courses/summary";
 import { Alert, Badge, Button, Card, CardBody, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui";
+import { getLocationService } from "@/lib/gps/locationService";
 
 export function CourseSearchView() {
   const searchParams = useSearchParams();
@@ -111,10 +112,10 @@ export function CourseSearchView() {
                 onClick={() => {
                   if (near) return setNear(null);
                   setGeoError(null);
-                  navigator.geolocation?.getCurrentPosition(
-                    (p) => setNear({ lat: p.coords.latitude, lon: p.coords.longitude }),
-                    () => setGeoError("Standort nicht verfügbar"),
-                  );
+                  getLocationService()
+                    .getCurrentPosition({ maxAgeMs: 60_000 })
+                    .then((p) => setNear({ lat: p.latitude, lon: p.longitude }))
+                    .catch(() => setGeoError("Standort nicht verfügbar"));
                 }}
               >
                 <LocateFixed className="h-4 w-4" /> {near ? "Standort aktiv" : "Meinen Standort verwenden"}

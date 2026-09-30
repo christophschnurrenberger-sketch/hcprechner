@@ -28,6 +28,11 @@ const nodeConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": ["./drizzle/**/*", "./data/seed/**/*"],
   },
+  // Standort nur für diese Seite selbst (GPS-Entfernung während der Runde); Kamera/Mikrofon werden nie genutzt.
+  // Webspace-Edition: gleicher Header über die von install.php erzeugte .htaccess.
+  headers() {
+    return [{ source: "/:path*", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" }] }];
+  },
 };
 
 const webspaceConfig: NextConfig = {

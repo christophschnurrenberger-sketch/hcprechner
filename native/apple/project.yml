@@ -1,0 +1,61 @@
+# XcodeGen-Projekt (https://github.com/yonaskolb/XcodeGen, ab 2.38): `xcodegen generate` erzeugt HCPGolf.xcodeproj.
+# iPhone-App „Golf HCP“ (Web-App + Watch-Anbindung) mit eingebetteter Apple-Watch-App; gemeinsame Logik in HCPGolfKit.
+name: HCPGolf
+options:
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+packages:
+  HCPGolfKit:
+    path: HCPGolfKit
+targets:
+  HCPCompanion:
+    type: application
+    platform: iOS
+    sources: [Companion]
+    dependencies:
+      - package: HCPGolfKit
+      - target: HCPWatch
+    info:
+      path: Companion/Info.plist
+      properties:
+        CFBundleDisplayName: Golf HCP
+        CFBundleShortVersionString: "2.4.0"
+        # Adresse der Installation aus Config/Base.xcconfig (keine fest einprogrammierte URL)
+        HCPBaseURL: $(HCP_BASE_URL)
+        NSLocationWhenInUseUsageDescription: Während der laufenden Runde berechnet die App deine Entfernung zum Grün – auch für die Apple Watch. Es wird kein Bewegungsverlauf gespeichert.
+        UIBackgroundModes: [location]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(HCP_BUNDLE_ID)
+        TARGETED_DEVICE_FAMILY: "1"
+  HCPWatch:
+    type: application
+    platform: watchOS
+    sources: [Watch]
+    dependencies:
+      - package: HCPGolfKit
+    info:
+      path: Watch/Info.plist
+      properties:
+        CFBundleDisplayName: Golf HCP
+        CFBundleShortVersionString: "2.4.0"
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: $(HCP_BUNDLE_ID)
+        WKRunsIndependentlyOfCompanionApp: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(HCP_BUNDLE_ID).watchkitapp
+schemes:
+  HCPCompanion:
+    build:
+      targets:
+        HCPCompanion: all
+    test:
+      targets: []

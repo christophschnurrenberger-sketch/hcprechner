@@ -5,6 +5,7 @@ import type { CourseDto } from "@/lib/courses/types";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui";
 import { CourseForm } from "./AdminForms";
 import { CsvImporter } from "./CsvImporter";
+import { GreenCsvImporter } from "./GreenCsvImporter";
 import { LayoutEditor } from "./LayoutEditor";
 
 /** Bearbeitung einer Anlage: Stammdaten, Plätze, Rating-Sets und Lochdaten. */
@@ -62,6 +63,9 @@ export function AdminCsvImport() {
         description="Validieren → Duplikate erkennen → Vorschau mit markierten Änderungen → erst nach Bestätigung importieren. Werte ohne Quelle werden nie als verifiziert übernommen."
       />
       <CsvImporter />
+      <div className="mt-8">
+        <GreenCsvImporter />
+      </div>
     </>
   );
 }

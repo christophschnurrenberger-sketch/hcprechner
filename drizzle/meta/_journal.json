@@ -29,6 +29,13 @@
       "when": 1790756472584,
       "tag": "0003_community",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790779296425,
+      "tag": "0004_hole_geo",
+      "breakpoints": true
     }
   ]
 }

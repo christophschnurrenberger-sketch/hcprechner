@@ -215,7 +215,8 @@ function htaccess_block($base, $minimal, $gate = true)
         $lines[] = '  Header always set X-Content-Type-Options "nosniff"';
         $lines[] = '  Header always set Referrer-Policy "strict-origin-when-cross-origin"';
         $lines[] = '  Header always set X-Frame-Options "SAMEORIGIN"';
-        $lines[] = '  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"';
+        // Standort nur für die eigene Seite (GPS-Entfernung zum Grün während der Runde)
+        $lines[] = '  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(self)"';
         $lines[] = '  <FilesMatch "\\.(html|txt)$">';
         $lines[] = '    Header set Cache-Control "no-cache"';
         $lines[] = '  </FilesMatch>';

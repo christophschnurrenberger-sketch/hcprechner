@@ -3,14 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { planCsvImport } from "@/lib/courses/csv";
+import { planGreenCsvImport } from "@/lib/courses/greenCsv";
 import {
   actionFailure,
   actionOk,
   csvTextFromForm,
   formToObject,
+  parseGreensForm,
   parseHolesForm,
   type ActionState,
   type CsvPreviewState,
+  type GreenCsvPreviewState,
 } from "@/lib/courses/adminForm";
 import { adminCoursePath } from "@/lib/courses/paths";
 import { actorName, requireAdmin } from "@/server/adminAuth";
@@ -18,12 +21,14 @@ import { audit } from "@/server/audit";
 import { importSeedIntoDb } from "@/server/seedImport";
 import {
   applyCsvPlan,
+  applyGreenCsvPlan,
   createCourse,
   createLayout,
   createRatingSet,
   loadAllCourses,
   mergeCourses,
   replaceHoles,
+  setGreenCoordinates,
   setRatingSetActive,
   setRatingSetVerified,
   updateCourse,
@@ -127,6 +132,22 @@ export async function saveHolesAction(_prev: ActionState, fd: FormData): Promise
   }
 }
 
+export async function saveGreensAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  try {
+    const user = await requireAdmin("courses.write");
+    const { layoutId, greens } = parseGreensForm(fd);
+    const { changed, removed } = await setGreenCoordinates(layoutId, greens, actorName(user));
+    if (changed.length || removed.length) {
+      await audit("GREENS_UPDATED", user, { entityType: "layout", entityId: layoutId, newValue: { changed, removed } });
+      revalidate();
+    }
+    const withCenter = greens.filter((g) => g.center).length;
+    return actionOk(changed.length || removed.length ? `GPS-Daten gespeichert (${withCenter}/${greens.length} Löcher mit Grünmitte).` : "Keine Änderungen.");
+  } catch (error) {
+    return actionFailure(error);
+  }
+}
+
 export async function mergeCoursesAction(fd: FormData): Promise<void> {
   const user = await requireAdmin("courses.write");
   const targetId = String(fd.get("targetId"));
@@ -156,6 +177,32 @@ export async function applyCsvAction(_prev: CsvPreviewState, fd: FormData): Prom
     const plan = planCsvImport(text, await loadAllCourses({ includeInactive: true }));
     const result = await applyCsvPlan(plan, actorName(user));
     await audit("IMPORT_APPLIED", user, { entityType: "courses", newValue: { source: "CSV_IMPORT", result } });
+    revalidate();
+    return { plan, result, error: null, text: "" };
+  } catch (error) {
+    return { plan: null, result: null, error: error instanceof Error ? error.message : "Fehler", text: "" };
+  }
+}
+
+/** GPS-CSV Schritt 1: Vorschau (Anlage, Platz, Loch, Koordinaten prüfen). */
+export async function previewGreenCsvAction(_prev: GreenCsvPreviewState, fd: FormData): Promise<GreenCsvPreviewState> {
+  try {
+    await requireAdmin("import");
+    const text = await csvTextFromForm(fd);
+    return { plan: planGreenCsvImport(text, await loadAllCourses({ includeInactive: true })), result: null, error: null, text };
+  } catch (error) {
+    return { plan: null, result: null, error: error instanceof Error ? error.message : "Fehler", text: "" };
+  }
+}
+
+/** GPS-CSV Schritt 2: nach Bestätigung übernehmen (nur Grünkoordinaten, Plan mit aktuellem Stand neu berechnet). */
+export async function applyGreenCsvAction(_prev: GreenCsvPreviewState, fd: FormData): Promise<GreenCsvPreviewState> {
+  try {
+    const user = await requireAdmin("import");
+    const text = String(fd.get("text") ?? "");
+    const plan = planGreenCsvImport(text, await loadAllCourses({ includeInactive: true }));
+    const result = await applyGreenCsvPlan(plan, actorName(user));
+    await audit("IMPORT_APPLIED", user, { entityType: "courses", newValue: { source: "CSV_GPS", result } });
     revalidate();
     return { plan, result, error: null, text: "" };
   } catch (error) {
