@@ -1,9 +1,25 @@
 # Abschluss-Check
 
-Stand: 30.09.2026 · Version 2.4.0 · **535 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
+Stand: 30.09.2026 · Version 2.5.0 · **539 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
 Statistik, Community, Ablauf der mobilen Scorecard, idempotentes Speichern, GPS/Entfernung/Watch-Protokoll, Parität
 TypeScript ↔ PHP, Node-API mit PGlite und PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build
 (standalone) und Webspace-ZIP erfolgreich.
+
+## Version 2.5 – Konten ohne E-Mail-Adresse
+
+Browser-Abläufe gegen beide Editionen: **Node 133/133** und **Webspace 132/132** (ZIP 2.5.0 auf dem IONOS-ähnlichen
+Apache), darunter die neuen Schritte „Konto ohne E-Mail angelegt“, „Anmeldung mit Benutzername“ und „Profil ohne
+E-Mail-Adresse speicherbar“.
+
+| Punkt | Status | Nachweis |
+|---|---|---|
+| Admin legt Konto nur mit Benutzername + Passwort an | ✅ | „Anmeldung mit: Benutzername (ohne E-Mail)“; Node `POST /api/admin/users`, PHP `user-create`; `tests/auth/node-username.test.ts`, PHP-API-Test, E2E |
+| Anmeldung mit dem Benutzernamen, Groß-/Kleinschreibung egal | ✅ | Feld „E-Mail oder Benutzername“; Suche case-insensitiv (auch Konten der Version 1) |
+| Benutzername eindeutig und geprüft | ✅ | 3–32 Zeichen a–z, 0–9, . _ -, ohne „@“ (gleiche Regel in TypeScript und PHP); `USERNAME_TAKEN` |
+| Passwort sicher | ✅ | nur als Hash; Standard: eigenes Passwort bei der ersten Anmeldung (abwählbar); Anlegen nur mit `users.write`, serverseitig geprüft, Audit `USER_CREATED` |
+| Ohne E-Mail kein „Passwort vergessen“ | ✅ | Hinweis auf der Seite; neues Passwort setzt der Admin im Benutzerdetail |
+| Profil ohne E-Mail speicherbar, E-Mail später ergänzbar | ✅ | neue Adresse gilt erst nach Bestätigung; Anmeldung mit Benutzername bleibt bis dahin möglich |
+| Benutzername im Admin änderbar | ✅ | Stammdaten im Benutzerdetail, protokolliert als `USER_PROFILE_UPDATED` |
 
 ## Version 2.4 – GPS: Entfernung zum Grün und Apple Watch (GPS-Master-Prompt, Definition of Done §118)
 
