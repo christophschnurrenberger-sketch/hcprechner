@@ -22,10 +22,12 @@ export type Permission =
   | "logs.read"
   | "system.read"
   | "rules.read"
-  | "settings.write";
+  | "settings.write"
+  | "community.read"
+  | "community.moderate";
 
-const SUPPORT: Permission[] = ["admin.access", "users.read", "rounds.read", "courses.read", "logs.read", "system.read", "rules.read"];
-const ADMIN: Permission[] = [...SUPPORT, "users.write", "users.impersonate", "courses.write", "import"];
+const SUPPORT: Permission[] = ["admin.access", "users.read", "rounds.read", "courses.read", "logs.read", "system.read", "rules.read", "community.read"];
+const ADMIN: Permission[] = [...SUPPORT, "users.write", "users.impersonate", "courses.write", "import", "community.moderate"];
 const SUPER_ADMIN: Permission[] = [...ADMIN, "users.roles", "users.delete", "settings.write"];
 
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
@@ -63,6 +65,8 @@ export const PERMISSION_LABELS: Readonly<Record<Permission, string>> = {
   "system.read": "Systemstatus ansehen",
   "rules.read": "Regelwerk ansehen",
   "settings.write": "Einstellungen ändern",
+  "community.read": "Community ansehen (Ranking, öffentliche Runden, aggregierte Statistik)",
+  "community.moderate": "Community moderieren (Runden verbergen, Sichtbarkeit korrigieren)",
 };
 
 export function isRole(value: unknown): value is Role {

@@ -26,7 +26,9 @@ export type ApiErrorCode =
   | "NINE_HOLE_RATING_MISSING"
   | "HOLE_DATA_MISSING"
   | "ROUND_NOT_FOUND"
-  | "ROUND_INVALID";
+  | "ROUND_INVALID"
+  | "COMMUNITY_DISABLED"
+  | "MEMBER_NOT_FOUND";
 
 export class ApiError extends Error {
   constructor(
@@ -70,6 +72,8 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
   HOLE_DATA_MISSING: "Für diesen Platz fehlen Par und Handicap je Loch. Bitte gib das Gesamtergebnis (GBE) ein.",
   ROUND_NOT_FOUND: "Diese Runde gibt es nicht (mehr).",
   ROUND_INVALID: "Die Runde kann so nicht berechnet werden. Bitte prüfe die Angaben.",
+  COMMUNITY_DISABLED: "Diese Community-Funktion ist derzeit nicht aktiviert.",
+  MEMBER_NOT_FOUND: "Dieses Mitglied gibt es nicht oder es teilt sein Profil nicht.",
 };
 
 export function userMessage(error: unknown): string {
@@ -90,6 +94,8 @@ export const ERROR_STATUS: Partial<Record<ApiErrorCode, number>> = {
   NOT_FOUND: 404,
   COURSE_NOT_FOUND: 404,
   ROUND_NOT_FOUND: 404,
+  MEMBER_NOT_FOUND: 404,
+  COMMUNITY_DISABLED: 403,
   CONFLICT: 409,
   EMAIL_TAKEN: 409,
   RATE_LIMITED: 429,

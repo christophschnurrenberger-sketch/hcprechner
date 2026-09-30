@@ -23,6 +23,12 @@
  *   search                   admin.access    { q } → Benutzer, Runden (Golfplätze sucht der Browser im Datensatz)
  *   courses-load             courses.read    Golfplatz-Datensatz inkl. Änderungsprotokoll
  *   courses-save             courses.write   { baseRevision, dataset } → 409 bei zwischenzeitlicher Änderung
+ *   community                community.read  Übersicht, Summen der Spielleistung (Quoten berechnet der Browser)
+ *   community-ranking        community.read  { filter, q, page, pageSize } Ranking inkl. Nicht-Teilnehmern
+ *   community-rounds         community.read  { filter, q, page, pageSize } geteilte und verborgene Runden
+ *   community-moderate       community.moderate { userId, roundId, action: HIDE|UNHIDE|MAKE_PRIVATE|REMOVE_NOTES, reason }
+ *   community-refresh        community.moderate Community-Daten neu aufbauen, heutigen Ranking-Stand ersetzen
+ *   user-community           community.moderate { id, rankingVisible?: false, profileVisible?: false } (nur abschalten)
  */
 declare(strict_types=1);
 require __DIR__ . '/_lib.php';
@@ -37,6 +43,8 @@ $permissions = [
     'rounds' => 'rounds.read', 'round' => 'rounds.read', 'logs' => 'logs.read', 'system' => 'system.read',
     'settings' => 'settings.write', 'settings-save' => 'settings.write', 'mail-test' => 'settings.write',
     'search' => 'admin.access', 'courses-load' => 'courses.read', 'courses-save' => 'courses.write',
+    'community' => 'community.read', 'community-ranking' => 'community.read', 'community-rounds' => 'community.read',
+    'community-moderate' => 'community.moderate', 'community-refresh' => 'community.moderate', 'user-community' => 'community.moderate',
 ];
 if (!isset($permissions[$action])) {
     hcp_fail('NOT_FOUND', 'Unbekannte Aktion');
@@ -457,6 +465,9 @@ switch ($action) {
         });
         foreach ($audits as $a) {
             hcp_audit($a[0], $actor, ['userId' => $updated['id'], 'entityType' => 'user', 'entityId' => $updated['id'], 'oldValue' => $a[1], 'newValue' => $a[2]]);
+            if ($a[0] === 'USER_PROFILE_UPDATED') {
+                hcp_cm_reindex($updated['id']);
+            }
         }
         hcp_json(['user' => adm_user_row($updated)]);
         break;
@@ -510,6 +521,7 @@ switch ($action) {
             }));
         });
         @unlink(hcp_member_file($target['id']));
+        hcp_cm_remove_user($target['id']);
         hcp_audit('USER_DELETED', $actor, ['userId' => $target['id'], 'entityType' => 'user', 'entityId' => $target['id'], 'oldValue' => ['email' => $target['email'], 'name' => adm_name($target), 'role' => $target['role'], 'rounds' => $rounds]]);
         hcp_json(['ok' => true]);
         break;
@@ -679,6 +691,13 @@ switch ($action) {
                 $next[$k] = (bool)$body[$k];
             }
         }
+        if (isset($body['community']) && is_array($body['community'])) {
+            foreach (array_keys(hcp_default_community_flags()) as $k) {
+                if (array_key_exists($k, $body['community'])) {
+                    $next['community'][$k] = (bool)$body['community'][$k];
+                }
+            }
+        }
         hcp_save_settings($next);
         $changedConfig = [];
         if (array_key_exists('siteUrl', $body)) {
@@ -716,7 +735,16 @@ switch ($action) {
         }
         $diffOld = [];
         $diffNew = [];
+        foreach ($next['community'] as $k => $v) {
+            if (($old['community'][$k] ?? null) !== $v) {
+                $diffOld['community.' . $k] = $old['community'][$k] ?? null;
+                $diffNew['community.' . $k] = $v;
+            }
+        }
         foreach ($next as $k => $v) {
+            if ($k === 'community') {
+                continue;
+            }
             if (($old[$k] ?? null) !== $v) {
                 $diffOld[$k] = in_array($k, ['imprintText', 'privacyText'], true) ? '(Text)' : ($old[$k] ?? null);
                 $diffNew[$k] = in_array($k, ['imprintText', 'privacyText'], true) ? '(Text geändert)' : $v;
@@ -844,4 +872,251 @@ switch ($action) {
         }
         hcp_json(['ok' => true, 'revision' => $dataset['revision'], 'updatedAt' => $dataset['updatedAt']]);
         break;
+
+    case 'community':
+        $status = hcp_cm_status_map();
+        $profiles = hcp_cm_profiles();
+        $index = hcp_cm_admin_index();
+        $counts = ['profilesVisible' => 0, 'rankingOptIn' => 0, 'roundsVisibleUsers' => 0, 'statsVisibleUsers' => 0, 'publicRounds' => 0];
+        foreach ($profiles as $uid => $p) {
+            if (($status[$uid] ?? '') !== 'ACTIVE') {
+                continue;
+            }
+            $counts['profilesVisible'] += !empty($p['profileVisible']) ? 1 : 0;
+            $counts['rankingOptIn'] += !empty($p['rankingVisible']) ? 1 : 0;
+            $counts['roundsVisibleUsers'] += !empty($p['roundsVisible']) ? 1 : 0;
+            $counts['statsVisibleUsers'] += !empty($p['statsVisible']) ? 1 : 0;
+            $counts['publicRounds'] += (int)($p['publicRoundsCount'] ?? 0);
+        }
+        $sums = hcp_cm_empty_sums();
+        $warnings = 0;
+        $hidden = 0;
+        $full = 0;
+        foreach ($index as $uid => $e) {
+            if (!isset($status[$uid])) {
+                continue;
+            }
+            foreach ($sums as $k => $v) {
+                $sums[$k] += (int)($e['sums'][$k] ?? 0);
+            }
+            $warnings += (int)($e['withWarnings'] ?? 0);
+            $hidden += (int)($e['hidden'] ?? 0);
+            foreach (($e['rounds'] ?? []) as $r) {
+                if (($r['level'] ?? null) === 'FULL' && ($status[$uid] ?? '') === 'ACTIVE') {
+                    $full++;
+                }
+            }
+        }
+        $dates = array_map(function ($f) {
+            return basename($f, '.php');
+        }, glob(hcp_cm_dir() . '/ranking/*.php') ?: []);
+        rsort($dates);
+        hcp_json($counts + [
+            'flags' => hcp_cm_flags(),
+            'members' => count(array_filter($status, function ($s) {
+                return $s === 'ACTIVE';
+            })),
+            'publicRoundsFull' => $full,
+            'hiddenRounds' => $hidden,
+            'sums' => $sums,
+            'withWarnings' => $warnings,
+            'lastSnapshotDate' => $dates[0] ?? null,
+        ]);
+        break;
+
+    case 'community-ranking':
+        $users = [];
+        foreach (hcp_load_users() as $u) {
+            $users[$u['id']] = $u;
+        }
+        $status = array_map(function ($u) {
+            return $u['status'];
+        }, $users);
+        $profiles = hcp_cm_profiles();
+        $positions = [];
+        foreach (hcp_cm_ranked($profiles, $status) as $p) {
+            $positions[$p['userId']] = $p['position'];
+        }
+        $filter = hcp_str($body, 'filter', 20);
+        $q = hcp_str($body, 'q', 60);
+        $rows = [];
+        foreach ($profiles as $uid => $p) {
+            $u = $users[$uid] ?? null;
+            if ($u === null) {
+                continue;
+            }
+            if (($filter === 'OPT_IN' && empty($p['rankingVisible'])) || ($filter === 'OPT_OUT' && !empty($p['rankingVisible'])) || ($filter === 'ACTIVE' && $u['status'] !== 'ACTIVE')) {
+                continue;
+            }
+            if ($q !== '' && !adm_contains($p['displayName'] . ' ' . adm_name($u), $q)) {
+                continue;
+            }
+            $rows[] = [
+                'userId' => $uid,
+                'name' => adm_name($u),
+                'displayName' => (string)$p['displayName'],
+                'publicId' => $p['publicId'] ?? null,
+                'position' => $positions[$uid] ?? null,
+                'handicapIndex' => $p['handicapIndex'] ?? null,
+                'rankingVisible' => !empty($p['rankingVisible']),
+                'profileVisible' => !empty($p['profileVisible']),
+                'roundsVisible' => !empty($p['roundsVisible']),
+                'statsVisible' => !empty($p['statsVisible']),
+                'status' => $u['status'],
+                'publicRoundsCount' => (int)($p['publicRoundsCount'] ?? 0),
+            ];
+        }
+        usort($rows, function ($a, $b) {
+            if ($a['rankingVisible'] !== $b['rankingVisible']) {
+                return $a['rankingVisible'] ? -1 : 1;
+            }
+            $ha = $a['handicapIndex'];
+            $hb = $b['handicapIndex'];
+            if ($ha === null || $hb === null) {
+                return $ha === $hb ? strnatcasecmp($a['displayName'], $b['displayName']) : ($ha === null ? 1 : -1);
+            }
+            $d = hcp_cm_tenths($ha) - hcp_cm_tenths($hb);
+            return $d !== 0 ? $d : strnatcasecmp($a['displayName'], $b['displayName']);
+        });
+        hcp_json(adm_paginate($rows, $body));
+        break;
+
+    case 'community-rounds':
+        $users = [];
+        foreach (hcp_load_users() as $u) {
+            $users[$u['id']] = $u;
+        }
+        $profiles = hcp_cm_profiles();
+        $flags = hcp_cm_flags();
+        $filter = hcp_str($body, 'filter', 20);
+        $q = hcp_str($body, 'q', 60);
+        $rows = [];
+        foreach (hcp_cm_admin_index() as $uid => $e) {
+            $u = $users[$uid] ?? null;
+            if ($u === null) {
+                continue;
+            }
+            $display = (string)($profiles[$uid]['displayName'] ?? '');
+            foreach (($e['rounds'] ?? []) as $r) {
+                if (($filter === 'HIDDEN' && empty($r['hidden'])) || ($filter === 'FULL' && ($r['visibility'] ?? '') !== 'MEMBERS_FULL')) {
+                    continue;
+                }
+                if ($q !== '' && !adm_contains($r['courseName'] . ' ' . $display . ' ' . adm_name($u), $q)) {
+                    continue;
+                }
+                $rows[] = [
+                    'userId' => $uid,
+                    'userName' => adm_name($u),
+                    'displayName' => $display,
+                    'roundId' => $r['roundId'],
+                    'date' => $r['date'],
+                    'courseName' => $r['courseName'],
+                    'holes' => $r['holes'],
+                    'visibility' => $r['visibility'],
+                    'hidden' => (bool)$r['hidden'],
+                    'detailed' => (bool)$r['detailed'],
+                    'level' => $r['level'] !== null ? hcp_cm_level_with_flags((string)$r['level'], $flags) : null,
+                ];
+            }
+        }
+        usort($rows, function ($a, $b) {
+            $d = strcmp($b['date'], $a['date']);
+            return $d !== 0 ? $d : strcmp($a['roundId'], $b['roundId']);
+        });
+        hcp_json(adm_paginate($rows, $body));
+        break;
+
+    case 'community-moderate':
+        $target = adm_target(hcp_str($body, 'userId', 64));
+        $roundId = hcp_str($body, 'roundId', 64);
+        $action = hcp_str($body, 'action', 20);
+        if (!in_array($action, ['HIDE', 'UNHIDE', 'MAKE_PRIVATE', 'REMOVE_NOTES'], true)) {
+            hcp_fail('VALIDATION', 'Unbekannte Aktion.');
+        }
+        $reason = hcp_str($body, 'reason', 300);
+        $reason = $reason === '' ? null : $reason;
+        $res = hcp_with_member_doc($target['id'], function (array &$doc) use ($roundId, $action, $reason, $actor) {
+            foreach ($doc['rounds'] as $i => $r) {
+                if (($r['id'] ?? null) !== $roundId || ($r['status'] ?? 'COMPLETED') === 'DELETED') {
+                    continue;
+                }
+                $notes = function (array $x) {
+                    if (!empty($x['notes'])) {
+                        return true;
+                    }
+                    foreach (($x['holeStats'] ?? []) as $h) {
+                        if (!empty($h['note'])) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                $old = ['visibility' => $r['visibility'] ?? 'PRIVATE', 'hidden' => !empty($r['moderation']['hidden']), 'notes' => $notes($r)];
+                if ($action === 'HIDE') {
+                    $r['moderation'] = ['hidden' => true, 'reason' => $reason, 'at' => hcp_now(), 'by' => adm_name($actor)];
+                } elseif ($action === 'UNHIDE') {
+                    $r['moderation'] = null;
+                } elseif ($action === 'MAKE_PRIVATE') {
+                    $r['visibility'] = 'PRIVATE';
+                } else {
+                    unset($r['notes']);
+                    if (isset($r['holeStats']) && is_array($r['holeStats'])) {
+                        foreach ($r['holeStats'] as $j => $h) {
+                            $r['holeStats'][$j]['note'] = null;
+                        }
+                    }
+                }
+                $doc['rounds'][$i] = $r;
+                return ['old' => $old, 'new' => ['visibility' => $r['visibility'] ?? 'PRIVATE', 'hidden' => !empty($r['moderation']['hidden']), 'notes' => $notes($r)], 'courseName' => $r['course']['courseName'] ?? null, 'date' => $r['date'] ?? null];
+            }
+            hcp_fail('ROUND_NOT_FOUND');
+        });
+        hcp_cm_reindex($target['id']);
+        $auditAction = $action === 'HIDE' ? 'PUBLIC_ROUND_HIDDEN' : ($action === 'UNHIDE' ? 'PUBLIC_ROUND_UNHIDDEN' : 'PUBLIC_ROUND_MODIFIED');
+        hcp_audit($auditAction, $actor, ['userId' => $target['id'], 'entityType' => 'round', 'entityId' => $roundId, 'oldValue' => $res['result']['old'], 'newValue' => $res['result']['new'] + ['action' => $action, 'reason' => $reason, 'courseName' => $res['result']['courseName'], 'date' => $res['result']['date']]]);
+        hcp_json(['ok' => true]);
+        break;
+
+    case 'community-refresh':
+        $n = 0;
+        foreach (hcp_load_users() as $u) {
+            hcp_cm_reindex($u['id']);
+            $n++;
+        }
+        $date = hcp_cm_snapshot_ensure(hcp_cm_ranked(hcp_cm_profiles(), hcp_cm_status_map()), true);
+        hcp_audit('RANKING_REFRESHED', $actor, ['entityType' => 'ranking', 'newValue' => ['users' => $n, 'snapshotDate' => $date]]);
+        hcp_json(['users' => $n, 'snapshotDate' => $date]);
+        break;
+
+    case 'user-community':
+        $target = adm_target(hcp_str($body, 'id', 64));
+        $changes = [];
+        foreach (['rankingVisible', 'profileVisible'] as $k) {
+            if (array_key_exists($k, $body) && $body[$k] === false) {
+                $changes[] = $k;
+            }
+        }
+        if (!$changes) {
+            hcp_fail('VALIDATION', 'Der Admin kann Sichtbarkeit nur abschalten.');
+        }
+        $res = hcp_with_member_doc($target['id'], function (array &$doc) use ($changes) {
+            $s = hcp_cm_settings($doc);
+            $old = ['rankingVisible' => $s['rankingVisible'], 'profileVisible' => $s['profileVisible']];
+            foreach ($changes as $k) {
+                $s[$k] = false;
+            }
+            $s = hcp_cm_normalize($s);
+            $s['updatedAt'] = hcp_now();
+            $doc['community'] = $s;
+            return $old;
+        });
+        hcp_cm_reindex($target['id']);
+        foreach ($changes as $k) {
+            if ($res['result'][$k]) {
+                hcp_audit($k === 'rankingVisible' ? 'USER_RANKING_VISIBILITY_CHANGED' : 'USER_PROFILE_VISIBILITY_CHANGED', $actor, ['userId' => $target['id'], 'entityType' => 'user', 'entityId' => $target['id'], 'oldValue' => [$k => true], 'newValue' => [$k => false]]);
+            }
+        }
+        hcp_json(['ok' => true]);
+        break;
+
 }

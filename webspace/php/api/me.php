@@ -13,6 +13,14 @@
  *   prefs-save       POST  { preferences }
  *   draft-save       POST  { draft }
  *   draft-delete     POST  { id }
+ *   round-visibility POST  { id, visibility, summary? }      Sichtbarkeit für andere Mitglieder
+ *   round-stats-save POST  { id, holeStats, stats, summary }  Lochstatistik (ändert keine WHS-Daten)
+ *   community-save   POST  { settings, summary? }            Community- und Privatsphäre-Einstellungen
+ *   avatar-save      POST  { dataUrl }  ·  avatar-delete POST
+ *
+ * `summary` (HCPI, Rundenzahl, Statistik) berechnet der Browser mit derselben Service-Schicht wie der
+ * Node-Server; PHP prüft die Wertebereiche. Nach jeder Änderung werden die Community-Daten neu aufgebaut.
+ * Moderation (vom Admin verborgene Runden) kann über diese Schnittstelle nie geändert werden.
  *
  * Die WHS-Berechnung erfolgt in der gemeinsamen Service-Schicht (src/lib/member) – in dieser Edition im
  * API-Adapter des Browsers; PHP übernimmt Anmeldung, Datentrennung, Prüfung, Speicherung und Audit-Log.
@@ -83,6 +91,87 @@ function me_check_round($round, string $field = 'round'): array
     return $round;
 }
 
+/** Lochstatistik: Struktur und Wertebereiche (fachliche Prüfung in der Service-Schicht). */
+function me_clean_hole_stats($holes, string $field = 'holeStats'): ?array
+{
+    if ($holes === null) {
+        return null;
+    }
+    if (!me_is_list($holes) || count($holes) < 9 || count($holes) > 18) {
+        hcp_fail('VALIDATION', 'Die Lochstatistik ist ungültig.', 0, [$field => 'Lochstatistik ungültig']);
+    }
+    $int = function ($v, int $min, int $max) use ($field) {
+        if ($v === null) {
+            return null;
+        }
+        if (!is_int($v) || $v < $min || $v > $max) {
+            hcp_fail('VALIDATION', 'Die Lochstatistik ist ungültig.', 0, [$field => 'Wert außerhalb des zulässigen Bereichs']);
+        }
+        return $v;
+    };
+    $bool = function ($v) use ($field) {
+        if ($v !== null && !is_bool($v)) {
+            hcp_fail('VALIDATION', 'Die Lochstatistik ist ungültig.', 0, [$field => 'Ja/Nein erwartet']);
+        }
+        return $v;
+    };
+    $out = [];
+    foreach ($holes as $h) {
+        if (!is_array($h)) {
+            hcp_fail('VALIDATION', 'Die Lochstatistik ist ungültig.', 0, [$field => 'Loch ungültig']);
+        }
+        $out[] = [
+            'number' => $int($h['number'] ?? null, 1, 18) ?? hcp_fail('VALIDATION', 'Lochnummer fehlt.'),
+            'par' => $int($h['par'] ?? null, 3, 6),
+            'strokeIndex' => $int($h['strokeIndex'] ?? null, 1, 18),
+            'score' => $int($h['score'] ?? null, 1, 20),
+            'putts' => $int($h['putts'] ?? null, 0, 10),
+            'fir' => $bool($h['fir'] ?? null),
+            'gir' => $bool($h['gir'] ?? null),
+            'bunkerVisit' => $bool($h['bunkerVisit'] ?? null),
+            'bunkerShots' => $int($h['bunkerShots'] ?? null, 0, 10),
+            'sandSave' => $bool($h['sandSave'] ?? null),
+            'upAndDown' => $bool($h['upAndDown'] ?? null),
+            'penaltyStrokes' => $int($h['penaltyStrokes'] ?? null, 0, 10),
+            'note' => is_string($h['note'] ?? null) && trim($h['note']) !== '' ? mb_substr_safe(trim($h['note']), 200) : null,
+        ];
+    }
+    return $out;
+}
+
+/** Community-Felder einer Runde: Sichtbarkeit prüfen, Lochstatistik prüfen, Moderation nur vom Server. */
+function me_round_extras(array $round, ?array $old): array
+{
+    $round['visibility'] = in_array($round['visibility'] ?? null, hcp_cm_visibilities(), true) ? $round['visibility'] : 'PRIVATE';
+    if (array_key_exists('holeStats', $round)) {
+        $clean = me_clean_hole_stats($round['holeStats'], 'round.holeStats');
+        if ($clean === null) {
+            unset($round['holeStats']);
+        } else {
+            $round['holeStats'] = $clean;
+        }
+    }
+    if (isset($round['computed']) && is_array($round['computed'])) {
+        $round['computed']['stats'] = hcp_cm_clean_stats($round['computed']['stats'] ?? null);
+    }
+    unset($round['moderation']);
+    if ($old !== null && !empty($old['moderation']) && is_array($old['moderation'])) {
+        $round['moderation'] = $old['moderation'];
+    }
+    return $round;
+}
+
+/** Vom Browser berechnete Zusammenfassung übernehmen (nur gültige Werte). */
+function me_store_summary(array &$doc, array $body): void
+{
+    if (array_key_exists('summary', $body)) {
+        $clean = hcp_cm_clean_summary($body['summary']);
+        if ($clean !== null) {
+            $doc['summary'] = $clean;
+        }
+    }
+}
+
 function me_round_summary(array $round): array
 {
     return [
@@ -114,7 +203,7 @@ switch ($action) {
         $body = hcp_body(256 * 1024);
         $round = me_check_round($body['round'] ?? null);
         $draftId = $body['draftId'] ?? null;
-        $res = hcp_with_member_doc($uid, function (array &$doc, int $revision) use ($body, $round, $draftId) {
+        $res = hcp_with_member_doc($uid, function (array &$doc, int $revision) use ($body, &$round, $draftId) {
             me_check_revision($body, $revision);
             $old = null;
             $found = false;
@@ -124,6 +213,7 @@ switch ($action) {
                         hcp_fail('ROUND_NOT_FOUND');
                     }
                     $old = $r;
+                    $round = me_round_extras($round, $r);
                     $round['createdAt'] = $r['createdAt'] ?? $round['createdAt'] ?? hcp_now();
                     $round['status'] = 'COMPLETED';
                     $doc['rounds'][$i] = $round;
@@ -134,9 +224,11 @@ switch ($action) {
                 if (count($doc['rounds']) >= ME_MAX_ROUNDS) {
                     hcp_fail('VALIDATION', 'Maximale Anzahl an Runden erreicht.');
                 }
+                $round = me_round_extras($round, null);
                 $round['status'] = 'COMPLETED';
                 $doc['rounds'][] = $round;
             }
+            me_store_summary($doc, $body);
             if (is_string($draftId) && $draftId !== '') {
                 $doc['drafts'] = array_values(array_filter($doc['drafts'], function ($d) use ($draftId) {
                     return ($d['id'] ?? null) !== $draftId;
@@ -150,6 +242,7 @@ switch ($action) {
             'oldValue' => $old === null ? null : me_round_summary($old),
             'newValue' => me_round_summary($round),
         ]);
+        hcp_cm_reindex($uid);
         hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
         break;
 
@@ -167,12 +260,14 @@ switch ($action) {
                     $doc['rounds'][$i]['status'] = 'DELETED';
                     $doc['rounds'][$i]['deletedAt'] = $now;
                     $doc['rounds'][$i]['updatedAt'] = $now;
+                    me_store_summary($doc, $body);
                     return $r;
                 }
             }
             hcp_fail('ROUND_NOT_FOUND');
         });
         me_audit($user, 'ROUND_DELETED', ['entityType' => 'round', 'entityId' => $id, 'oldValue' => me_round_summary($res['result'])]);
+        hcp_cm_reindex($uid);
         hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
         break;
 
@@ -200,13 +295,16 @@ switch ($action) {
                 if (isset($ids[$r['id']])) {
                     continue;
                 }
+                $r = me_round_extras($r, null);
                 $r['status'] = 'COMPLETED';
                 $doc['rounds'][] = $r;
                 $added++;
             }
+            me_store_summary($doc, $body);
             return $added;
         });
         me_audit($user, 'ROUNDS_IMPORTED', ['entityType' => 'round', 'newValue' => ['count' => $res['result']]]);
+        hcp_cm_reindex($uid);
         hcp_json(['ok' => true, 'imported' => $res['result'], 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
         break;
 
@@ -234,9 +332,11 @@ switch ($action) {
                 'startDate' => $date($p['startDate'] ?? null),
                 'brake265LiftedAt' => $date($p['brake265LiftedAt'] ?? null),
             ]);
+            me_store_summary($doc, $body);
             return ['gender' => $old['gender'] ?? null, 'startHandicapIndex' => $old['startHandicapIndex'] ?? null];
         });
         me_audit($user, 'USER_PROFILE_UPDATED', ['entityType' => 'profile', 'entityId' => $uid, 'oldValue' => $res['result'], 'newValue' => ['gender' => $gender, 'startHandicapIndex' => round((float)$start, 1)]]);
+        hcp_cm_reindex($uid);
         hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
         break;
 
@@ -254,13 +354,19 @@ switch ($action) {
         }
         $home = me_id_ok($prefs['homeCourseId'] ?? null) ? $prefs['homeCourseId'] : null;
         $onboarded = is_string($prefs['onboardedAt'] ?? null) ? substr($prefs['onboardedAt'], 0, 40) : null;
-        $res = hcp_with_member_doc($uid, function (array &$doc) use ($favorites, $home, $onboarded) {
+        $res = hcp_with_member_doc($uid, function (array &$doc) use ($favorites, $home, $onboarded, $body) {
+            $before = $doc['preferences']['homeCourseId'] ?? null;
             $doc['preferences'] = [
                 'favorites' => array_slice($favorites, 0, 100),
                 'homeCourseId' => $home,
                 'onboardedAt' => $onboarded ?? ($doc['preferences']['onboardedAt'] ?? null),
             ];
+            me_store_summary($doc, $body);
+            return $before !== $home;
         });
+        if ($res['result'] || array_key_exists('summary', $body)) {
+            hcp_cm_reindex($uid);
+        }
         hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
         break;
 
@@ -293,6 +399,106 @@ switch ($action) {
                 return ($d['id'] ?? null) !== $id;
             }));
         });
+        hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
+        break;
+
+    case 'round-visibility':
+        $body = hcp_body(8000);
+        $id = $body['id'] ?? null;
+        $visibility = $body['visibility'] ?? null;
+        if (!me_id_ok($id) || !in_array($visibility, hcp_cm_visibilities(), true)) {
+            hcp_fail('VALIDATION', 'Ungültige Sichtbarkeit.');
+        }
+        $res = hcp_with_member_doc($uid, function (array &$doc) use ($id, $visibility, $body) {
+            foreach ($doc['rounds'] as $i => $r) {
+                if (($r['id'] ?? null) === $id && ($r['status'] ?? 'COMPLETED') !== 'DELETED') {
+                    $old = $r['visibility'] ?? 'PRIVATE';
+                    $doc['rounds'][$i]['visibility'] = $visibility;
+                    $doc['rounds'][$i]['updatedAt'] = hcp_now();
+                    me_store_summary($doc, $body);
+                    return $old;
+                }
+            }
+            hcp_fail('ROUND_NOT_FOUND');
+        });
+        me_audit($user, 'ROUND_VISIBILITY_CHANGED', ['entityType' => 'round', 'entityId' => $id, 'oldValue' => ['visibility' => $res['result']], 'newValue' => ['visibility' => $visibility]]);
+        hcp_cm_reindex($uid);
+        hcp_json(['ok' => true, 'visibility' => $visibility, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
+        break;
+
+    case 'round-stats-save':
+        $body = hcp_body(128 * 1024);
+        $id = $body['id'] ?? null;
+        if (!me_id_ok($id)) {
+            hcp_fail('ROUND_NOT_FOUND');
+        }
+        $holeStats = me_clean_hole_stats($body['holeStats'] ?? null);
+        $stats = hcp_cm_clean_stats($body['stats'] ?? null);
+        $res = hcp_with_member_doc($uid, function (array &$doc, int $revision) use ($id, $holeStats, $stats, $body) {
+            me_check_revision($body, $revision);
+            foreach ($doc['rounds'] as $i => $r) {
+                if (($r['id'] ?? null) === $id && ($r['status'] ?? 'COMPLETED') !== 'DELETED') {
+                    // nur Lochstatistik und Statistik – WHS-Daten (GBE, Rating, Ergebnis) bleiben unverändert
+                    if ($holeStats === null) {
+                        unset($doc['rounds'][$i]['holeStats']);
+                    } else {
+                        $doc['rounds'][$i]['holeStats'] = $holeStats;
+                    }
+                    if (isset($doc['rounds'][$i]['computed']) && is_array($doc['rounds'][$i]['computed'])) {
+                        $doc['rounds'][$i]['computed']['stats'] = $holeStats === null ? null : $stats;
+                    }
+                    $doc['rounds'][$i]['updatedAt'] = hcp_now();
+                    me_store_summary($doc, $body);
+                    return $holeStats === null ? 0 : count($holeStats);
+                }
+            }
+            hcp_fail('ROUND_NOT_FOUND');
+        });
+        me_audit($user, 'ROUND_STATS_UPDATED', ['entityType' => 'round', 'entityId' => $id, 'newValue' => ['holes' => $res['result']]]);
+        hcp_cm_reindex($uid);
+        hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
+        break;
+
+    case 'community-save':
+        $body = hcp_body(8000);
+        $input = $body['settings'] ?? null;
+        if (!is_array($input)) {
+            hcp_fail('VALIDATION', 'Ungültige Einstellungen');
+        }
+        $res = hcp_with_member_doc($uid, function (array &$doc) use ($input, $body) {
+            $current = hcp_cm_settings($doc);
+            $next = hcp_cm_apply_input($current, $input);
+            if ($next['publicId'] === null) {
+                $next['publicId'] = bin2hex(random_bytes(8)) . '-' . bin2hex(random_bytes(8));
+            }
+            $doc['community'] = $next;
+            me_store_summary($doc, $body);
+            $pick = function (array $s) {
+                return array_intersect_key($s, array_flip(['displayName', 'rankingVisible', 'profileVisible', 'roundsVisible', 'statsVisible', 'notesVisible']));
+            };
+            return ['old' => $pick($current), 'new' => $pick($next)];
+        });
+        me_audit($user, 'COMMUNITY_SETTINGS_CHANGED', ['entityType' => 'community', 'entityId' => $uid, 'oldValue' => $res['result']['old'], 'newValue' => $res['result']['new']]);
+        hcp_cm_reindex($uid);
+        hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
+        break;
+
+    case 'avatar-save':
+    case 'avatar-delete':
+        $img = $action === 'avatar-save' ? hcp_cm_check_image(hcp_body(256 * 1024)['dataUrl'] ?? null) : null;
+        $res = hcp_with_member_doc($uid, function (array &$doc) use ($img, $uid) {
+            $s = hcp_cm_settings($doc);
+            if ($img === null) {
+                @unlink(hcp_cm_avatar_file($uid));
+                $s['avatarVersion'] = null;
+            } else {
+                $version = (int)($s['avatarVersion'] ?? 0) + 1;
+                hcp_write_json_file(hcp_cm_avatar_file($uid), ['mime' => $img['mime'], 'data' => $img['data'], 'version' => $version]);
+                $s['avatarVersion'] = $version;
+            }
+            $doc['community'] = $s;
+        });
+        hcp_cm_reindex($uid);
         hcp_json(['ok' => true, 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
         break;
 

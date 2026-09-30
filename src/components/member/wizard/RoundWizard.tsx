@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Globe2, Loader2, MapPin, PenLine, Star, Trophy, UserRound, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, BarChart3, Check, CheckCircle2, Globe2, Loader2, MapPin, PenLine, Star, Trophy, UserRound, Users } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import type { MemberCourseLists, RoundInput, RoundPreview, RoundSaveResult } from "@/lib/api/types";
@@ -14,13 +14,18 @@ import { TEE_SWATCH, genderLabel } from "@/lib/courses/tees";
 import type { CourseDto, LayoutDto } from "@/lib/courses/types";
 import type { CourseSummary } from "@/lib/courses/summary";
 import { cn, formatDate, formatDecimal, formatHcp } from "@/lib/format";
+import { alignToHoles, hasAnyStat, holeNumbersFor } from "@/lib/stats/holeStats";
+import type { RoundStatistics } from "@/lib/stats/types";
 import { useApi } from "@/lib/useApi";
 import { Alert, Button, ChoiceCards, Field, Input, Segmented } from "@/components/ui";
 import { useSession } from "@/components/session/SessionProvider";
 import { Spinner, useToast } from "@/components/ui/feedback";
 import { CoursePicker } from "@/components/courses/CoursePicker";
 import { ChangeBadge } from "@/components/member/HcpHero";
-import { roundHref } from "@/components/member/RoundList";
+import { roundHref, roundStatsHref } from "@/components/member/RoundList";
+import { useMyCommunity, usePublicRoundsEnabled, VisibilityChooser } from "@/components/community/Visibility";
+import { DetailedHoleInput } from "@/components/stats/DetailedHoleInput";
+import { formatPercent } from "@/components/stats/StatsUi";
 import { HoleByHoleInput } from "./HoleByHoleInput";
 import { STEPS, applyPatch, draftLabel, holesChoiceOf, holesPatch, stepErrors, toRoundInput, type HolesChoice, type Step, type WizardState } from "./wizardState";
 
@@ -364,14 +369,58 @@ function CourseStep({
 }
 
 // ---------------------------------------------------------------------------
+// Lochstatistik (optional)
+// ---------------------------------------------------------------------------
+
+function DetailToggle({ checked, onChange, removing }: { checked: boolean; onChange: (v: boolean) => void; removing: boolean }) {
+  return (
+    <div className="space-y-2">
+      <label className={cn("flex cursor-pointer items-start gap-3 rounded-xl border p-3", checked ? "border-brand-2 bg-brand-soft/60" : "border-border bg-surface hover:border-border-strong")}>
+        <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[var(--brand)]" />
+        <span>
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+            <BarChart3 className="h-4 w-4 text-brand" aria-hidden /> Runde detailliert tracken
+          </span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-ink-3">Putts, Fairways, Grüns, Bunker und Strafschläge je Loch – für deine Statistik. Ändert dein Handicap nicht und lässt sich auch später ergänzen.</span>
+        </span>
+      </label>
+      {removing && <p className="text-sm text-warning">Die bisher erfasste Lochstatistik wird beim Speichern entfernt.</p>}
+    </div>
+  );
+}
+
+function StatsPreview({ stats }: { stats: RoundStatistics }) {
+  const items = [
+    { label: "Putts", value: stats.totalPutts ?? "–" },
+    { label: "GIR", value: formatPercent(stats.girPercentage) },
+    { label: "Fairways", value: formatPercent(stats.firPercentage) },
+  ];
+  return (
+    <dl className="grid grid-cols-3 gap-2">
+      {items.map((k) => (
+        <div key={k.label} className="rounded-xl bg-surface-2 py-2 text-center">
+          <dt className="text-xs text-ink-3">{k.label}</dt>
+          <dd className="tabular text-lg font-semibold text-ink">{k.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Schritt: Prüfen (Vorschau vom Backend)
 // ---------------------------------------------------------------------------
 
 function ReviewStep({ input, editId, state, update, onFix }: { input: RoundInput; editId: string | null; state: WizardState; update: (p: Partial<WizardState>) => void; onFix: (step: Step, manual?: boolean) => void }) {
-  const key = JSON.stringify(input);
-  const preview = useApi<RoundPreview>(() => api.member.previewRound(input, editId ?? undefined), key);
+  // Die Sichtbarkeit beeinflusst die Berechnung nicht – ein Wechsel löst keine neue Vorschau aus.
+  const previewInput: RoundInput = { ...input, visibility: undefined };
+  const key = JSON.stringify(previewInput);
+  const preview = useApi<RoundPreview>(() => api.member.previewRound(previewInput, editId ?? undefined), key);
   const error = preview.error;
   const p = preview.data;
+  const publicRounds = usePublicRoundsEnabled();
+  const community = useMyCommunity();
+  const statsError = error instanceof ApiError && error.code === "VALIDATION" && Boolean(error.fields?.holeStats);
 
   return (
     <div className="space-y-5">
@@ -381,7 +430,16 @@ function ReviewStep({ input, editId, state, update, onFix }: { input: RoundInput
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Wird berechnet …
           </div>
         )}
-        {error ? (
+        {error && statsError ? (
+          <Alert tone="error" title="Bitte die Lochstatistik prüfen">
+            {userMessage(error)}
+            <div className="mt-2">
+              <button type="button" className="font-medium text-brand hover:underline" onClick={() => onFix("score")}>
+                Statistik korrigieren
+              </button>
+            </div>
+          </Alert>
+        ) : error ? (
           <Alert tone="error" title="So kann die Runde nicht berechnet werden">
             {userMessage(error)}
             <div className="mt-2 flex flex-wrap gap-3">
@@ -436,13 +494,39 @@ function ReviewStep({ input, editId, state, update, onFix }: { input: RoundInput
         ) : null}
       </Question>
 
+      {p && (p.stats || p.statsWarnings.length > 0) && (
+        <Question title="Deine Statistik" hint="Nur für dich – beeinflusst das Handicap nicht.">
+          {p.stats && state.detailed && <StatsPreview stats={p.stats} />}
+          {p.statsWarnings.length > 0 && (
+            <Alert tone="warning">
+              <ul className="list-disc space-y-0.5 pl-4">
+                {p.statsWarnings.slice(0, 6).map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+              {state.detailed && (
+                <button type="button" className="mt-1 font-medium text-brand hover:underline" onClick={() => onFix("score")}>
+                  Statistik ansehen
+                </button>
+              )}
+            </Alert>
+          )}
+        </Question>
+      )}
+
+      {publicRounds && (
+        <Question title="Wer darf diese Runde sehen?" hint="Notizen bleiben privat. Du kannst das später in der Rundenansicht ändern.">
+          <VisibilityChooser value={state.visibility} onChange={(visibility) => update({ visibility })} community={community.data} onCommunity={(c) => community.setData(c)} />
+        </Question>
+      )}
+
       <details className="group rounded-2xl border border-border bg-surface">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">Weitere Angaben (PCC, Notiz)</summary>
         <div className="space-y-4 px-4 pb-4">
           <Field label="Spielbedingungen (PCC)" hint="Nur ändern, wenn der Club für den Tag einen PCC-Wert veröffentlicht hat.">
             <Segmented name="PCC" size="sm" value={state.pcc} onChange={(pcc) => update({ pcc })} options={[-1, 0, 1, 2, 3].map((v) => ({ value: v as WizardState["pcc"], label: v > 0 ? `+${v}` : String(v) }))} />
           </Field>
-          <Field label="Notiz (optional)" htmlFor="notes">
+          <Field label="Notiz (optional, privat)" htmlFor="notes">
             <Input id="notes" value={state.notes} onChange={(e) => update({ notes: e.target.value })} maxLength={500} placeholder="z. B. Wetter, Flight …" />
           </Field>
         </div>
@@ -487,6 +571,23 @@ function SavedView({ result, editing }: { result: RoundSaveResult; editing: bool
         </div>
         {!result.changed && <p className="mt-4 text-sm text-ink-3">{result.item.relevant ? "Dein Handicap Index bleibt unverändert – die Runde gehört nicht zu deinen besten Ergebnissen." : "Diese Runde ist nicht handicaprelevant."}</p>}
       </div>
+      {result.stats ? (
+        <div className="space-y-3 rounded-3xl border border-border bg-surface p-5 text-left">
+          <p className="text-sm font-medium text-ink">Deine Statistik</p>
+          <StatsPreview stats={result.stats} />
+          <Link href={`${roundHref(result.roundId)}&tab=stats`} className="text-sm font-medium text-brand hover:underline">
+            Ganze Statistik ansehen
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-border-strong bg-surface p-5">
+          <p className="font-semibold text-ink">Möchtest du diese Runde detailliert tracken?</p>
+          <p className="text-sm text-ink-3">Putts, Grüns und Fairways je Loch ergänzen – dein Handicap bleibt unverändert.</p>
+          <Link href={roundStatsHref(result.roundId)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-soft px-4 text-sm font-semibold text-brand hover:bg-brand-soft-2">
+            <BarChart3 className="h-4 w-4" aria-hidden /> Statistiken ergänzen
+          </Link>
+        </div>
+      )}
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
         <Link href={roundHref(result.roundId)} className="inline-flex h-11 items-center justify-center rounded-xl border border-border-strong px-5 font-medium text-ink hover:bg-surface-2">
           Details ansehen
@@ -542,6 +643,18 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
     [state.courseKind, layout, state.teeColor, state.gender, state.holes, state.nine],
   );
 
+  // Lochstatistik: immer passend zu den gespielten Löchern (Par/Handicap aus den Platzdaten, falls vorhanden)
+  const statsBase = useMemo(
+    () =>
+      holeInfo
+        ? holeInfo.map((h) => ({ number: h.number, par: h.par, strokeIndex: h.strokeIndex ?? null }))
+        : holeNumbersFor(state.holes, state.holes === 9 ? state.nine : null).map((n) => ({ number: n, par: null, strokeIndex: null })),
+    [holeInfo, state.holes, state.nine],
+  );
+  const holeStats = useMemo(() => alignToHoles(state.holeStats, statsBase), [state.holeStats, statsBase]);
+  const aligned: WizardState = { ...state, holeStats };
+  const [hadStats] = useState(() => initial.holeStats.some((h) => hasAnyStat(h)));
+
   // Entwurf automatisch speichern (nur neue Runden)
   const progressed = !editId && !saved && (state.step !== "basics" || state.courseId !== null || state.manual.courseName !== "");
   useEffect(() => {
@@ -563,7 +676,7 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
   }
 
   function next() {
-    const e = stepErrors(state, state.step);
+    const e = stepErrors(aligned, state.step);
     if (state.step === "course" && state.courseKind === "DB" && !e.tee) {
       const tee = selectedTeeOf(layout, state);
       if (tee && !tee.verified && !state.ratingConfirmed) e.confirm = "Bitte bestätige die Werte oder gib sie von der Scorekarte ein.";
@@ -581,7 +694,7 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
     setSaving(true);
     setSaveError(null);
     try {
-      const input = toRoundInput(state);
+      const input = toRoundInput(aligned);
       const result = editId ? await api.member.updateRound(editId, input) : await api.member.createRound(input, draftId);
       setSaved(result);
       toast(editId ? "Runde aktualisiert." : "Runde gespeichert.");
@@ -595,7 +708,8 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
 
   if (saved) return <SavedView result={saved} editing={Boolean(editId)} />;
 
-  const input = state.step === "review" ? toRoundInput(state) : null;
+  const input = state.step === "review" ? toRoundInput(aligned) : null;
+  const strokes = state.strokes.length === state.holes ? state.strokes : Array(state.holes).fill(null);
 
   return (
     <div ref={topRef} className="mx-auto max-w-2xl scroll-mt-20 space-y-6">
@@ -661,9 +775,9 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
               <Input id="gbe" inputMode="numeric" value={state.gbe} onChange={(e) => update({ gbe: e.target.value })} className="tabular h-14 max-w-[10rem] text-2xl font-semibold" placeholder={state.holes === 9 ? "45" : "90"} autoFocus />
             </Field>
           )}
-          {state.scoreMode === "HOLES" && holeInfo && (
+          {state.scoreMode === "HOLES" && holeInfo && !state.detailed && (
             <>
-              <HoleByHoleInput holes={holeInfo} scores={state.strokes.length === state.holes ? state.strokes : Array(state.holes).fill(null)} onChange={(strokes) => update({ strokes })} />
+              <HoleByHoleInput holes={holeInfo} scores={strokes} onChange={(next) => update({ strokes: next })} />
               {errors.strokes && <p className="text-sm font-medium text-critical">{errors.strokes}</p>}
             </>
           )}
@@ -671,6 +785,22 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
             <Field label="Stableford-Nettopunkte" htmlFor="stb" hint="Mit voller Spielvorgabe gespielt." error={errors.stableford}>
               <Input id="stb" inputMode="numeric" value={state.stableford} onChange={(e) => update({ stableford: e.target.value })} className="tabular h-14 max-w-[10rem] text-2xl font-semibold" placeholder="36" />
             </Field>
+          )}
+          <DetailToggle checked={state.detailed} onChange={(detailed) => update({ detailed })} removing={Boolean(editId) && hadStats && !state.detailed} />
+          {state.detailed && (
+            <section className="space-y-3" aria-label="Lochstatistik">
+              {state.scoreMode !== "HOLES" && <p className="text-sm text-ink-3">Die Schläge je Loch dienen hier nur der Statistik – fürs Handicap zählt dein Gesamtergebnis.</p>}
+              {!holeInfo && <Alert tone="info">Für diesen Platz fehlen die Lochdaten. Wähle das Par je Loch – es dient nur der Statistik.</Alert>}
+              <DetailedHoleInput
+                stats={holeStats}
+                onChange={(next) => update({ holeStats: next })}
+                strokes={state.scoreMode === "HOLES" && holeInfo ? strokes : undefined}
+                onStrokes={state.scoreMode === "HOLES" && holeInfo ? (next) => update({ strokes: next }) : undefined}
+                parEditable={!holeInfo}
+              />
+              {state.scoreMode === "HOLES" && errors.strokes && <p className="text-sm font-medium text-critical">{errors.strokes}</p>}
+              {errors.stats && <p className="text-sm font-medium text-critical">{errors.stats}</p>}
+            </section>
           )}
         </div>
       )}

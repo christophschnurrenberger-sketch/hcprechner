@@ -6,6 +6,8 @@
 src/rules/whs/de/2026/   Regelversion DE/DGV 2026 – Konfiguration + reine Rechenfunktionen
 src/rules/whs/registry   Verfügbare Regelversionen (neue Versionen/Länder hier registrieren)
 src/lib/whs/             Engine: Einzelrunde, chronologischer Scoring Record, Simulation, Statistik, Texte
+src/lib/stats/           Golfstatistik (getrennt von WHS): Lochdaten + Prüfung, Runden-/Mehrrunden-Statistik, Hinweise
+src/lib/community/       Community: Einstellungen/Policy (Opt-in), Projektion „was andere sehen“, Ranking
 src/lib/member/          Service-Schicht Mitglied: Dokument (Profil, Runden, Entwürfe, Einstellungen), Runde prüfen
                          und speichern, HCPI/Verlauf/Rechenweg (DTOs), Import, Admin-Sichten, Regelwerk-Info
 src/lib/api/             API-Adapter: client.ts (Schnittstellen + lazy `api`), node.ts, webspace.ts, transport.ts, types.ts
@@ -18,13 +20,15 @@ src/lib/export/          CSV/PDF-Export, Runden-CSV-Import
 src/lib/runtime.ts       Build-Variante (node | webspace), Basispfad
 src/db/                  Drizzle-Schema, Client (PostgreSQL oder PGlite)
 src/server/              Node-Backend: Sitzung, Sicherheit, Benutzer, Mitglieder-Dokumente, Audit, Mail, Einstellungen,
-                         Platzdaten-Repository, Bootstrap des Super-Admins
+                         Platzdaten-Repository, Bootstrap des Super-Admins, community.ts / communityAdmin.ts
+                         (materialisierte Community-Tabellen, Ranking per SQL, Moderation)
 src/proxy.server.ts      Node: leitet /member und /admin ohne Sitzungs-Cookie zu /login
 src/app/(public)/        öffentliche Seiten und Anmeldung
 src/app/member/          Mitgliederbereich (Layout: MemberShell)
 src/app/admin/           Admin-Bereich (Layout: AdminShell); (courses)/ = Golfplatzverwaltung
 src/components/          UI: layout/ (Shells), session/, ui/ (Feedback, Dialoge), auth/, member/, admin/, courses/
-webspace/php/            install.php, gate.php, api/*.php (auth, me, admin, courses), Schutzdateien
+webspace/php/            install.php, gate.php, api/*.php (auth, me, community, admin, courses; _community.php =
+                         PHP-Fassung der Projektion, per Paritätstest abgeglichen), Schutzdateien
 data/seed/               mitgelieferte Golfplatz-Startdaten (JSON-Datensatz)
 scripts/                 Bayern-Importer, DB-Check, Startdaten, create-admin, build-webspace.mjs
 tests/                   Vitest (Engine, Service-Schicht, Rechte, PHP-API)   e2e/  Browser-Abläufe A–K
@@ -38,8 +42,8 @@ nur `api` und die DTO-Typen aus `src/lib/api`. Texte zu Codes stehen in `src/lib
 | Bereich | Pfade | Layout | Schutz |
 |---|---|---|---|
 | Öffentlich | `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/golfplaetze`, `/methodik`, `/hilfe`, `/datenschutz`, `/impressum` | `PublicShell` | – |
-| Mitglied | `/member`, `/member/hcp`, `/member/rounds`, `/member/rounds/new`, `/member/rounds/view?id=`, `/member/courses`, `/member/profile`, `/member/welcome`, `/member/password`, `/member/import`, `/member/tools` | `MemberShell` (Desktop-Navigation, mobile Leiste unten, „+ Runde“) | angemeldet |
-| Admin | `/admin`, `/admin/users`, `/admin/users/view?id=`, `/admin/users/impersonate?id=`, `/admin/rounds`, `/admin/courses`, `/admin/ratings`, `/admin/sources`, `/admin/data-quality`, `/admin/duplicates`, `/admin/import`, `/admin/changes`, `/admin/rules`, `/admin/system`, `/admin/logs`, `/admin/permissions`, `/admin/settings`, `/admin/search` | `AdminShell` (Seitenleiste nach Berechtigung, globale Suche) | `admin.access` + Berechtigung je Seite/Aktion |
+| Mitglied | `/member`, `/member/hcp`, `/member/rounds`, `/member/rounds/new`, `/member/rounds/view?id=`, `/member/rounds/stats?id=`, `/member/stats`, `/member/community`, `/member/community/member?id=`, `/member/community/round?member=&round=`, `/member/courses`, `/member/profile`, `/member/welcome`, `/member/password`, `/member/import`, `/member/tools` | `MemberShell` (Desktop-Navigation, mobile Leiste unten, „+ Runde“) | angemeldet |
+| Admin | `/admin`, `/admin/users`, `/admin/users/view?id=`, `/admin/users/impersonate?id=`, `/admin/rounds`, `/admin/community`, `/admin/courses`, `/admin/ratings`, `/admin/sources`, `/admin/data-quality`, `/admin/duplicates`, `/admin/import`, `/admin/changes`, `/admin/rules`, `/admin/system`, `/admin/logs`, `/admin/permissions`, `/admin/settings`, `/admin/search` | `AdminShell` (Seitenleiste nach Berechtigung, globale Suche) | `admin.access` + Berechtigung je Seite/Aktion |
 
 Detailseiten verwenden Query-Parameter (`?id=`), weil die Webspace-Edition ein statischer Export ist; die Node-Edition
 nutzt dieselben Seiten (Ausnahme: `/admin/courses/<id>` und die SEO-Seiten `/golfplaetze/<region>/<slug>`).
@@ -57,7 +61,8 @@ API ohnehin verweigert.
 | Berechtigung | USER | SUPPORT | ADMIN | SUPER_ADMIN |
 |---|:-:|:-:|:-:|:-:|
 | admin.access, users.read, rounds.read, courses.read, logs.read, system.read, rules.read | | ✓ | ✓ | ✓ |
-| users.write, users.impersonate, courses.write, import | | | ✓ | ✓ |
+| community.read | | ✓ | ✓ | ✓ |
+| users.write, users.impersonate, courses.write, import, community.moderate | | | ✓ | ✓ |
 | users.roles, users.delete, settings.write | | | | ✓ |
 
 Zusätzlich: Ein Admin verwaltet nur Konten mit niedrigerer Rolle (`canManageUser`, Super-Admin alle außer dem eigenen);
@@ -154,6 +159,12 @@ auth_tokens    Einmal-Token (E-Mail bestätigen, Passwort zurücksetzen bzw. Ein
 member_data    Mitglieder-Dokument je Benutzer (Profil, Runden mit Status COMPLETED/DELETED, Entwürfe,
                Favoriten/Heimatplatz), Revision
 audit_log      Zeitpunkt, Admin (actor_id, actor_name), betroffener Benutzer, Aktion, Entität, alter/neuer Wert
+community_profiles   materialisiertes Community-Profil je Mitglied (publicId, Anzeigename, Freigaben, HCPI, Heimatplatz,
+               Region, Spielleistung nur bei Statistik-Freigabe) – Grundlage für Ranking und Mitgliederliste
+public_rounds  freigegebene Runden in ihrer Stufe (BASIC/FULL) als fertige Projektion
+round_statistics  Statistik je Runde (auch privat) für Admin-Aggregate und Datenqualität – ohne Notizen
+ranking_snapshots Tagesstände (Datum, Bereich, Mitglied, Position, HCPI) für den Trend
+user_avatars   Profilbilder (JPEG/PNG/WebP, höchstens 150 KB), nur über die geschützte API
 app_settings, mail_log, error_log   Einstellungen (inkl. Sitzungs-Secret, falls nicht per Umgebung), Mail- und Fehlerprotokoll
 player_profiles, rounds, app_users, app_user_data   Tabellen der Version 1 (werden von 0002 übernommen, nicht mehr beschrieben)
 ```
@@ -173,6 +184,14 @@ HCPI-Verlauf: Aktueller HCPI `#1f7a4d`, Low HCPI `#2a78d6`, kalkulierter HCPI `#
 `#d95926`), Score Differentials neutral grau. Mit dem Palette-Validator geprüft; Grün/Orange liegt für Protanopie im
 Grenzbereich (ΔE 6,5), daher Legende, Endbeschriftung und Tabellenansicht als zusätzliche Kodierung.
 
+Golfstatistik (`/member/stats`): GIR `var(--series-current)` und Fairways `var(--series-low)` auf einer %-Achse,
+Fairways zusätzlich gestrichelt, mit Legende und Tabellenansicht (validiert hell/dunkel: ΔE ≥ 20,9). Schlagzahl-Verlauf
+getrennt nach 9 und 18 Loch (nie eine gemeinsame Linie), Putts pro Loch als Einzelserie ohne Legende.
+
+Das Mitglieder-Dokument bleibt die einzige Quelle; `syncCommunity(userId)` baut die Community-Tabellen nach jeder
+Änderung in einer Transaktion neu auf (Migration `0003_community.sql`). Eine Runde (`MemberRound`) trägt neben den
+unveränderten WHS-Feldern `visibility`, `holeStats`, `moderation` und `computed.stats`. Details: `docs/COMMUNITY.md`.
+
 ## Sicherheit / Datenschutz
 
 - Datentrennung: Mitglieder-Endpunkte lesen die Benutzer-ID ausschließlich aus der Sitzung; es gibt keinen Parameter
@@ -185,4 +204,7 @@ Grenzbereich (ΔE 6,5), daher Legende, Endbeschriftung und Tabellenansicht als z
   Konto existiert.
 - Keine Geheimnisse im Browser: SMTP-Passwort, Sitzungs-Secret und Admin-Daten verlassen den Server nicht; die
   Einstellungsseite zeigt nur „gesetzt/nicht gesetzt“. Keine hartkodierten URLs – Links aus `APP_URL` bzw. `siteUrl`.
+- Community: alles Opt-in; die Projektion (`src/lib/community/projection.ts`, PHP `hcp_cm_project`) ist die einzige
+  Stelle, die Felder für andere Mitglieder freigibt – nie E-Mail, interne ID, private/ausgeblendete Runden oder nicht
+  freigegebene Notizen. Admins können Freigaben nur ausschalten und Runden ausblenden (protokolliert), nie einschalten.
 - Fehler: strukturiert (`{ error: { code, message, fieldErrors } }`), Stacktraces nur im Serverprotokoll.

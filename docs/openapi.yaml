@@ -2,18 +2,18 @@
 openapi: 3.1.0
 info:
   title: Golf HCP Rechner – WHS 2026 · API
-  version: 2.0.0
+  version: 2.2.0
   description: 'Schnittstelle zwischen Oberfläche und Backend. Die Oberfläche greift ausschließlich über den API-Adapter
 
     (`src/lib/api/client.ts`) zu.
 
 
-    **Node-Edition:** REST-Route-Handler unter `/api/auth`, `/api/me`, `/api/admin`. Die WHS-Berechnung erfolgt
+    **Node-Edition:** REST-Route-Handler unter `/api/auth`, `/api/me`, `/api/community`, `/api/admin`. Die WHS-Berechnung erfolgt
 
     auf dem Server über die Service-Schicht `src/lib/member`.
 
 
-    **Webspace-Edition:** PHP-Skripte `api/auth.php`, `api/me.php`, `api/admin.php` (jeweils `?action=…`,
+    **Webspace-Edition:** PHP-Skripte `api/auth.php`, `api/me.php`, `api/community.php`, `api/admin.php` (jeweils `?action=…`,
 
     siehe `x-webspace`). PHP übernimmt Anmeldung, Rollenprüfung, Datentrennung, Speicherung und Audit-Log.
 
@@ -38,6 +38,14 @@ info:
 
     **Fehler:** immer `{ error: CODE, message, fields? }`, Codes siehe `ApiError`.
 
+
+
+    **Community (ab 2.2):** alles Opt-in. `/api/community` liefert ausschließlich freigegebene Daten (Projektion im Backend) –
+
+    nie E-Mail-Adressen, interne Benutzer-IDs, private oder ausgeblendete Runden oder nicht freigegebene Notizen. Lochstatistiken
+
+    verändern weder Score Differential noch Handicap Index. Details: docs/COMMUNITY.md.
+
     '
 servers:
 - url: http://localhost:3000
@@ -47,6 +55,8 @@ tags:
   description: Konto und Anmeldung (öffentlich bzw. angemeldet)
 - name: me
   description: Daten des angemeldeten Mitglieds – die Benutzer-ID stammt immer aus der Sitzung
+- name: community
+  description: Community für angemeldete Mitglieder – nur freigegebene Daten, Filterung im Backend
 - name: admin
   description: Admin-Backend – jede Route prüft ihre Berechtigung serverseitig
 - name: courses
@@ -116,6 +126,8 @@ components:
           - HOLE_DATA_MISSING
           - ROUND_NOT_FOUND
           - ROUND_INVALID
+          - COMMUNITY_DISABLED
+          - MEMBER_NOT_FOUND
         message:
           type: string
           description: Verständliche deutsche Meldung
@@ -184,6 +196,8 @@ components:
           type:
           - string
           - 'null'
+        community:
+          $ref: '#/components/schemas/CommunityFlags'
     MeResponse:
       type: object
       properties:
@@ -272,7 +286,8 @@ components:
                 - F
               confirmRating:
                 type: object
-                description: Nur bei ungeprüftem Rating – vom Spieler mit der Scorekarte bestätigte Werte; müssen exakt mit dem hinterlegten Rating übereinstimmen (sonst RATING_CHANGED).
+                description: Nur bei ungeprüftem Rating – vom Spieler mit der Scorekarte bestätigte Werte; müssen exakt mit dem hinterlegten Rating
+                  übereinstimmen (sonst RATING_CHANGED).
                 required:
                 - par
                 - courseRating
@@ -345,6 +360,18 @@ components:
                 const: STABLEFORD_TOTAL
               points:
                 type: integer
+        visibility:
+          $ref: '#/components/schemas/RoundVisibility'
+        holeStats:
+          type:
+          - array
+          - 'null'
+          minItems: 9
+          maxItems: 18
+          items:
+            $ref: '#/components/schemas/HoleStat'
+          description: Optionale Lochstatistik (Spielleistung, ohne Einfluss aufs Handicap). Bei Eingabe „Loch für Loch“ übernimmt das Backend
+            die Schläge aus der WHS-Eingabe, Par/Handicap aus den Platzdaten. null entfernt eine bisherige Statistik, fehlend = unverändert.
     RoundListItem:
       type: object
       properties:
@@ -530,6 +557,452 @@ components:
         oldValue: {}
         newValue: {}
     Page:
+      type: object
+      properties:
+        items:
+          type: array
+          items: {}
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    CommunityFlags:
+      type: object
+      description: Schalter des Betreibers (Admin → Einstellungen)
+      properties:
+        communityEnabled:
+          type: boolean
+        rankingEnabled:
+          type: boolean
+        publicRoundsEnabled:
+          type: boolean
+        statsSharingEnabled:
+          type: boolean
+        activityFeedEnabled:
+          type: boolean
+    RoundVisibility:
+      type: string
+      enum:
+      - PRIVATE
+      - MEMBERS_BASIC
+      - MEMBERS_FULL
+      default: PRIVATE
+      description: Nur ich · Alle Mitglieder – Basisdaten · Alle Mitglieder – Details (Scorekarte/Statistik, setzt Statistik-Freigabe voraus)
+    HoleStat:
+      type: object
+      required:
+      - number
+      description: Lochdaten; null = nicht erfasst. FIR nur auf Par 4/5. Unmögliche Kombinationen (z. B. mehr Putts als Schläge) → VALIDATION.
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 18
+        par:
+          type:
+          - integer
+          - 'null'
+        strokeIndex:
+          type:
+          - integer
+          - 'null'
+        score:
+          type:
+          - integer
+          - 'null'
+        putts:
+          type:
+          - integer
+          - 'null'
+        fir:
+          type:
+          - boolean
+          - 'null'
+        gir:
+          type:
+          - boolean
+          - 'null'
+        bunkerVisit:
+          type:
+          - boolean
+          - 'null'
+        bunkerShots:
+          type:
+          - integer
+          - 'null'
+        sandSave:
+          type:
+          - boolean
+          - 'null'
+        upAndDown:
+          type:
+          - boolean
+          - 'null'
+        penaltyStrokes:
+          type:
+          - integer
+          - 'null'
+        note:
+          type:
+          - string
+          - 'null'
+          maxLength: 200
+          description: privat, außer bei ausdrücklicher Notiz-Freigabe
+    RoundStatistics:
+      type: object
+      description: Vom Backend berechnet. Quoten 0–100 ungerundet; null = keine Versuche. Nenner = erfasste Löcher.
+      properties:
+        holes:
+          type: integer
+        holesScored:
+          type: integer
+        holesTracked:
+          type: integer
+        puttHoles:
+          type: integer
+        girs:
+          type: integer
+        girHoles:
+          type: integer
+        firs:
+          type: integer
+        fairwayOpportunities:
+          type: integer
+        sandAttempts:
+          type: integer
+        sandSaves:
+          type: integer
+        upAndDownAttempts:
+          type: integer
+        upAndDowns:
+          type: integer
+        threePutts:
+          type: integer
+        eagles:
+          type: integer
+        birdies:
+          type: integer
+        pars:
+          type: integer
+        bogeys:
+          type: integer
+        doubleBogeys:
+          type: integer
+        triplePlus:
+          type: integer
+        grossScore:
+          type:
+          - number
+          - 'null'
+        parPlayed:
+          type:
+          - number
+          - 'null'
+        totalPutts:
+          type:
+          - number
+          - 'null'
+        puttsPerHole:
+          type:
+          - number
+          - 'null'
+        puttsOnGir:
+          type:
+          - number
+          - 'null'
+        puttsPerGir:
+          type:
+          - number
+          - 'null'
+        girPercentage:
+          type:
+          - number
+          - 'null'
+        firPercentage:
+          type:
+          - number
+          - 'null'
+        sandSavePercentage:
+          type:
+          - number
+          - 'null'
+        upAndDownPercentage:
+          type:
+          - number
+          - 'null'
+        penaltyStrokes:
+          type:
+          - number
+          - 'null'
+        scorecardComplete:
+          type: boolean
+    PerformanceReport:
+      type: object
+      description: Golfstatistik mehrerer Runden (Summen der Treffer ÷ Summen der Versuche, nie Durchschnitt von Prozentwerten)
+      properties:
+        filter:
+          type: object
+        summary:
+          type: object
+          description: 'PerformanceSummary: Quoten, Durchschnitte 9/18, Verteilung'
+        history:
+          type: array
+          items:
+            type: object
+            description: PerformancePoint je Runde
+        options:
+          type: object
+          description: gespielte Plätze und Abschläge
+        roundsWithoutStats:
+          type: integer
+    CommunitySettings:
+      type: object
+      description: Alles standardmäßig aus (Opt-in). Runden/Statistik setzen ein sichtbares Profil voraus, Notizen zusätzlich Runden- und Statistik-Freigabe.
+      properties:
+        displayName:
+          type:
+          - string
+          - 'null'
+          description: 2–40 Zeichen, keine E-Mail-Adressen oder Links; null = „Vorname N.“
+        rankingVisible:
+          type: boolean
+          default: false
+        profileVisible:
+          type: boolean
+          default: false
+        roundsVisible:
+          type: boolean
+          default: false
+        statsVisible:
+          type: boolean
+          default: false
+        notesVisible:
+          type: boolean
+          default: false
+        defaultRoundVisibility:
+          $ref: '#/components/schemas/RoundVisibility'
+        publicId:
+          type:
+          - string
+          - 'null'
+        avatarVersion:
+          type:
+          - integer
+          - 'null'
+        updatedAt:
+          type:
+          - string
+          - 'null'
+    MyCommunity:
+      type: object
+      properties:
+        settings:
+          $ref: '#/components/schemas/CommunitySettings'
+        effectiveDisplayName:
+          type: string
+        avatarUrl:
+          type:
+          - string
+          - 'null'
+        flags:
+          $ref: '#/components/schemas/CommunityFlags'
+    PublicMemberRef:
+      type: object
+      description: Öffentlicher Verweis – enthält nie E-Mail oder interne ID
+      properties:
+        publicId:
+          type: string
+        displayName:
+          type: string
+        initials:
+          type: string
+        avatarUrl:
+          type:
+          - string
+          - 'null'
+        profileVisible:
+          type: boolean
+    MyRanking:
+      type: object
+      properties:
+        participating:
+          type: boolean
+        position:
+          type:
+          - integer
+          - 'null'
+          description: 'bei Nicht-Teilnahme: nur für dich berechnet'
+        handicapIndex:
+          type: number
+        trend:
+          type:
+          - integer
+          - 'null'
+        trendSince:
+          type:
+          - string
+          - 'null'
+        total:
+          type: integer
+    RankingEntry:
+      allOf:
+      - $ref: '#/components/schemas/PublicMemberRef'
+      - type: object
+        properties:
+          position:
+            type: integer
+            description: Wettkampf-Rang (1, 1, 3)
+          handicapIndex:
+            type: number
+          homeCourseName:
+            type:
+            - string
+            - 'null'
+          roundsCount:
+            type: integer
+          trend:
+            type:
+            - integer
+            - 'null'
+            description: + = Plätze gewonnen seit dem letzten Ranking-Stand
+          isMe:
+            type: boolean
+    RankingResponse:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+          - ALL
+          - HOME
+          - REGION
+        scopeLabel:
+          type:
+          - string
+          - 'null'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RankingEntry'
+        top:
+          type: array
+          items:
+            $ref: '#/components/schemas/RankingEntry'
+        me:
+          oneOf:
+          - $ref: '#/components/schemas/MyRanking'
+          - type: 'null'
+        scopes:
+          type: array
+          items:
+            type: object
+        previousSnapshotDate:
+          type:
+          - string
+          - 'null'
+    PublicRoundSummary:
+      type: object
+      properties:
+        member:
+          $ref: '#/components/schemas/PublicMemberRef'
+        roundId:
+          type: string
+        level:
+          type: string
+          enum:
+          - BASIC
+          - FULL
+        date:
+          type: string
+          format: date
+        courseName:
+          type: string
+        holes:
+          type: integer
+          enum:
+          - 9
+          - 18
+        grossScore:
+          type:
+          - integer
+          - 'null'
+        adjustedGrossScore:
+          type:
+          - integer
+          - 'null'
+        scoreDifferential:
+          type:
+          - number
+          - 'null'
+        handicapIndexAfter:
+          type:
+          - number
+          - 'null'
+        createdAt:
+          type: string
+    PublicRoundView:
+      allOf:
+      - $ref: '#/components/schemas/PublicRoundSummary'
+      - type: object
+        description: 'Stufe BASIC: stats/holeStats/notes = null'
+        properties:
+          stats:
+            oneOf:
+            - $ref: '#/components/schemas/RoundStatistics'
+            - type: 'null'
+          holeStats:
+            type:
+            - array
+            - 'null'
+            items:
+              $ref: '#/components/schemas/HoleStat'
+          insights:
+            type: array
+            items:
+              type: string
+          notes:
+            type:
+            - string
+            - 'null'
+          isMine:
+            type: boolean
+    PublicProfileView:
+      allOf:
+      - $ref: '#/components/schemas/PublicMemberRef'
+      - type: object
+        properties:
+          handicapIndex:
+            type:
+            - number
+            - 'null'
+          homeCourseName:
+            type:
+            - string
+            - 'null'
+          roundsCount:
+            type: integer
+          publicRoundsCount:
+            type: integer
+          rankingPosition:
+            type:
+            - integer
+            - 'null'
+          performance:
+            type:
+            - object
+            - 'null'
+            description: nur mit Statistik-Freigabe
+          isMe:
+            type: boolean
+    CommunityPage:
       type: object
       properties:
         items:
@@ -967,15 +1440,203 @@ paths:
       responses:
         '200':
           description: imported und skipped
+  /api/me/rounds/{id}/stats:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    put:
+      tags:
+      - me
+      summary: Lochstatistik ergänzen/ändern – GBE, Score Differential und HCPI bleiben unverändert (Audit ROUND_STATS_UPDATED)
+      security: *id002
+      x-webspace: POST api/me.php?action=round-stats-save
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                holeStats:
+                  type:
+                  - array
+                  - 'null'
+                  items:
+                    $ref: '#/components/schemas/HoleStat'
+      responses:
+        '200':
+          description: '{ stats: RoundStatistics | null, warnings: string[] }'
+        '400': *id001
+        '404': *id001
+  /api/me/rounds/{id}/visibility:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      tags:
+      - me
+      summary: Sichtbarkeit einer Runde (Audit ROUND_VISIBILITY_CHANGED)
+      security: *id002
+      x-webspace: POST api/me.php?action=round-visibility
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - visibility
+              properties:
+                visibility:
+                  $ref: '#/components/schemas/RoundVisibility'
+      responses:
+        '200':
+          description: OK
+        '404': *id001
   /api/me/statistics:
     get:
       tags:
       - me
-      summary: Statistik
+      summary: Golfstatistik (Spielleistung) mit Filtern – seit 2.2; die WHS-Auswertung liegt unter /api/me/tools/statistics
+      security: *id003
+      x-webspace: 'Adapter: berechnet aus dem eigenen Dokument (api/me.php?action=load)'
+      parameters:
+      - name: last
+        in: query
+        schema:
+          type: integer
+          enum:
+          - 5
+          - 10
+          - 20
+        description: letzte n Runden mit Statistik; fehlt = alle
+      - name: holes
+        in: query
+        schema:
+          type: integer
+          enum:
+          - 9
+          - 18
+      - name: courseId
+        in: query
+        schema:
+          type: string
+      - name: teeColor
+        in: query
+        schema:
+          type: string
+      - name: period
+        in: query
+        schema:
+          type: string
+          enum:
+          - ALL
+          - DAYS_30
+          - DAYS_90
+          - YEAR
+      responses:
+        '200':
+          description: PerformanceReport
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceReport'
+  /api/me/statistics/history:
+    get:
+      tags:
+      - me
+      summary: Verlauf je Runde (gleiche Filter wie /api/me/statistics)
+      security: *id003
+      responses:
+        '200':
+          description: PerformancePoint[]
+  /api/me/tools/statistics:
+    get:
+      tags:
+      - me
+      summary: WHS-Auswertung der Score Differentials (bis 2.1 unter /api/me/statistics)
       security: *id003
       responses:
         '200':
           description: PlayerStatistics
+  /api/me/community:
+    get:
+      tags:
+      - me
+      summary: Eigene Community- und Privatsphäre-Einstellungen
+      security: *id003
+      x-webspace: GET api/community.php?action=my
+      responses:
+        '200':
+          description: MyCommunity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyCommunity'
+    patch:
+      tags:
+      - me
+      summary: Einstellungen ändern (nur eigene; Audit COMMUNITY_SETTINGS_CHANGED)
+      security: *id002
+      x-webspace: POST api/me.php?action=community-save
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Teilmenge von CommunitySettings (displayName, *Visible, defaultRoundVisibility)
+      responses:
+        '200':
+          description: MyCommunity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyCommunity'
+        '400': *id001
+  /api/me/avatar:
+    put:
+      tags:
+      - me
+      summary: Profilbild speichern (Data-URL JPEG/PNG/WebP, höchstens 150 KB; Dateiinhalt wird geprüft)
+      security: *id002
+      x-webspace: POST api/me.php?action=avatar-save
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - dataUrl
+              properties:
+                dataUrl:
+                  type: string
+      responses:
+        '200':
+          description: MyCommunity
+        '400': *id001
+    delete:
+      tags:
+      - me
+      summary: Profilbild entfernen
+      security: *id002
+      x-webspace: POST api/me.php?action=avatar-delete
+      responses:
+        '200':
+          description: MyCommunity
+  /api/me/ranking:
+    get:
+      tags:
+      - me
+      summary: Eigene Ranking-Position und Verlauf
+      security: *id003
+      x-webspace: GET api/community.php?action=my-ranking
+      responses:
+        '200':
+          description: '{ ranking: MyRanking | null, history: { date, position, handicapIndex }[] }'
   /api/me/tools/{tool}:
     post:
       tags:
@@ -995,6 +1656,163 @@ paths:
       responses:
         '200':
           description: OK
+  /api/community/ranking:
+    get:
+      tags:
+      - community
+      summary: Ranking nach Handicap Index – nur Mitglieder mit Zustimmung; Nicht-Teilnehmer sehen ihre hypothetische Position nur selbst
+      security: *id003
+      x-webspace: GET api/community.php?action=ranking
+      parameters:
+      - name: scope
+        in: query
+        schema:
+          type: string
+          enum:
+          - ALL
+          - HOME
+          - REGION
+      - &id004
+        name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          description: RankingResponse
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RankingResponse'
+        '403': *id001
+  /api/community/members:
+    get:
+      tags:
+      - community
+      summary: Mitglieder mit sichtbarem Profil
+      security: *id003
+      x-webspace: GET api/community.php?action=members
+      parameters:
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 60
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - HCP
+          - NAME
+          - ACTIVITY
+      - *id004
+      responses:
+        '200':
+          description: CommunityPage<MemberListItem>
+        '403': *id001
+  /api/community/members/{publicId}:
+    parameters:
+    - name: publicId
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - community
+      summary: Öffentliches Profil (nur mit Profil-Freigabe; sonst MEMBER_NOT_FOUND)
+      security: *id003
+      x-webspace: GET api/community.php?action=member&id=
+      responses:
+        '200':
+          description: PublicProfileView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProfileView'
+        '404': *id001
+  /api/community/members/{publicId}/rounds:
+    parameters:
+    - name: publicId
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - community
+      summary: Freigegebene Runden eines Mitglieds
+      security: *id003
+      x-webspace: GET api/community.php?action=member-rounds&id=
+      parameters:
+      - *id004
+      responses:
+        '200':
+          description: CommunityPage<PublicRoundSummary>
+        '404': *id001
+  /api/community/activity:
+    get:
+      tags:
+      - community
+      summary: Zuletzt freigegebene Runden
+      security: *id003
+      x-webspace: GET api/community.php?action=activity
+      parameters:
+      - *id004
+      responses:
+        '200':
+          description: 'CommunityPage<{ type: ROUND, round: PublicRoundSummary }>'
+        '403': *id001
+  /api/community/rounds/{publicId}/{roundId}:
+    parameters:
+    - name: publicId
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: roundId
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - community
+      summary: Freigegebene Runde (BASIC oder FULL) – private, gelöschte oder ausgeblendete Runden → 404
+      security: *id003
+      x-webspace: GET api/community.php?action=round&member=&round=
+      responses:
+        '200':
+          description: PublicRoundView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicRoundView'
+        '404': *id001
+  /api/community/avatar/{publicId}:
+    parameters:
+    - name: publicId
+      in: path
+      required: true
+      schema:
+        type: string
+    get:
+      tags:
+      - community
+      summary: Profilbild (nur angemeldet; nur bei Profil- oder Ranking-Freigabe)
+      security: *id003
+      x-webspace: GET api/community.php?action=avatar&id=
+      responses:
+        '200':
+          description: Bild
+          content:
+            image/jpeg: {}
+            image/png: {}
+            image/webp: {}
+        '404':
+          description: kein Bild oder nicht freigegeben
   /api/courses:
     get:
       tags:
@@ -1308,3 +2126,146 @@ paths:
         '200':
           description: Datei
         '403': *id001
+  /api/admin/community:
+    get:
+      tags:
+      - admin
+      summary: 'Community-Übersicht: Freigaben, geteilte Runden, aggregierte Spielleistung (keine Einzelwerte), Datenqualität'
+      description: 'Berechtigung: community.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=community
+      responses:
+        '200':
+          description: AdminCommunityOverview
+        '403': *id001
+  /api/admin/community/ranking:
+    get:
+      tags:
+      - admin
+      summary: Ranking inkl. Nicht-Teilnehmern
+      description: 'Berechtigung: community.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=community-ranking
+      parameters:
+      - name: filter
+        in: query
+        schema:
+          type: string
+          enum:
+          - OPT_IN
+          - OPT_OUT
+          - ACTIVE
+      - name: q
+        in: query
+        schema:
+          type: string
+      - *id004
+      responses:
+        '200':
+          description: Page<AdminRankingRow>
+        '403': *id001
+  /api/admin/community/rounds:
+    get:
+      tags:
+      - admin
+      summary: Geteilte und ausgeblendete Runden
+      description: 'Berechtigung: community.read'
+      security: *id003
+      x-webspace: POST api/admin.php?action=community-rounds
+      parameters:
+      - name: filter
+        in: query
+        schema:
+          type: string
+          enum:
+          - FULL
+          - HIDDEN
+      - name: q
+        in: query
+        schema:
+          type: string
+      - *id004
+      responses:
+        '200':
+          description: Page<AdminPublicRoundRow>
+        '403': *id001
+  /api/admin/community/moderate:
+    post:
+      tags:
+      - admin
+      summary: 'Moderation: HIDE, UNHIDE, MAKE_PRIVATE, REMOVE_NOTES – Runden werden nie gelöscht, das Handicap bleibt unverändert (Audit PUBLIC_ROUND_*)'
+      description: 'Berechtigung: community.moderate'
+      security: *id002
+      x-webspace: POST api/admin.php?action=community-moderate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - userId
+              - roundId
+              - action
+              properties:
+                userId:
+                  type: string
+                roundId:
+                  type: string
+                action:
+                  type: string
+                  enum:
+                  - HIDE
+                  - UNHIDE
+                  - MAKE_PRIVATE
+                  - REMOVE_NOTES
+                reason:
+                  type:
+                  - string
+                  - 'null'
+                  maxLength: 300
+      responses:
+        '200':
+          description: OK
+        '403': *id001
+        '404': *id001
+  /api/admin/community/refresh:
+    post:
+      tags:
+      - admin
+      summary: 'Ranking aktualisieren: Community-Daten aller Mitglieder neu aufbauen, heutigen Ranking-Stand ersetzen (Audit RANKING_REFRESHED)'
+      description: 'Berechtigung: community.moderate'
+      security: *id002
+      x-webspace: POST api/admin.php?action=community-refresh
+      responses:
+        '200':
+          description: '{ users, snapshotDate }'
+        '403': *id001
+  /api/admin/users/{id}/community:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    patch:
+      tags:
+      - admin
+      summary: Freigaben eines Mitglieds abschalten (nur false; einschalten kann nur das Mitglied selbst). Audit USER_RANKING/PROFILE_VISIBILITY_CHANGED
+      description: 'Berechtigung: community.moderate'
+      security: *id002
+      x-webspace: POST api/admin.php?action=user-community
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rankingVisible:
+                  const: false
+                profileVisible:
+                  const: false
+      responses:
+        '200':
+          description: OK
+        '403': *id001
+        '404': *id001

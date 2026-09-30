@@ -23,6 +23,7 @@ import {
   Star,
   Upload,
   Users,
+  UsersRound,
   X,
   ArrowLeft,
 } from "lucide-react";
@@ -48,6 +49,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/admin/users", label: "Benutzer", icon: Users, permission: "users.read" },
       { href: "/admin/rounds", label: "Runden", icon: ClipboardList, permission: "rounds.read" },
+      { href: "/admin/community", label: "Community", icon: UsersRound, permission: "community.read" },
       { href: "/admin/permissions", label: "Rollen & Rechte", icon: KeyRound, permission: "admin.access" },
     ],
   },

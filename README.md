@@ -13,8 +13,8 @@ Drei getrennte Bereiche mit eigener Navigation und eigenem Layout:
 | Bereich | Inhalt |
 |---|---|
 | Öffentlich (`/`) | Startseite, Anmelden, Registrieren, Passwort vergessen/zurücksetzen, E-Mail bestätigen, Golfplätze Bayern (SEO-Seiten), Rechenregeln & Methodik, Hilfe/FAQ, Datenschutz, Impressum |
-| Mitglieder (`/member`) | Startseite mit großem HCPI und Veränderung, HCP-Verlauf und Rechenweg, **„+ Runde erfassen“** (Assistent: Löcher → Platz → Abschlag → Ergebnis als GBE oder Loch für Loch; nur hinterlegte Abschläge; ungeprüfte Ratings bestätigt der Spieler mit seiner Scorekarte; Hinweis zur 9-Loch-Methode), Ergebnisseite „HCPI vorher → nachher“, Runden mit Detail und Rechenweg-Akkordeon, Bearbeiten und Löschen (Papierkorb), Entwürfe mit automatischem Speichern, Golfplätze mit Favoriten, Heimatplatz und zuletzt gespielt, Onboarding (Start-HCPI, Heimatplatz), Profil (Konto, Sicherheit, Datenschutz mit Export und Kontolöschung), CSV-Import, Werkzeuge (Simulator, GBE-Rechner). Mobil: untere Navigation mit höchstens fünf Einträgen |
-| Admin (`/admin`) | Eigenes Layout mit Seitenleiste und kompakten Tabellen: Dashboard, Benutzer (Filter, Detail, HCP-Ansicht, protokollierte Benutzeransicht), Runden, Golfplätze, Ratings, Quellen, Datenqualität, Duplikate, Import, Änderungen, Regelwerk, System, Audit-Log, Berechtigungen, Einstellungen (inkl. Mailversand), globale Suche |
+| Mitglieder (`/member`) | Startseite mit großem HCPI und Veränderung, HCP-Verlauf und Rechenweg, **„+ Runde erfassen“** (Assistent: Löcher → Platz → Abschlag → Ergebnis als GBE oder Loch für Loch; nur hinterlegte Abschläge; ungeprüfte Ratings bestätigt der Spieler mit seiner Scorekarte; Hinweis zur 9-Loch-Methode), Ergebnisseite „HCPI vorher → nachher“, Runden mit Detail und Rechenweg-Akkordeon, Bearbeiten und Löschen (Papierkorb), Entwürfe mit automatischem Speichern, Golfplätze mit Favoriten, Heimatplatz und zuletzt gespielt, Onboarding (Start-HCPI, Heimatplatz), Profil (Konto, Sicherheit, Datenschutz mit Export und Kontolöschung), CSV-Import, Werkzeuge (Simulator, GBE-Rechner). **Seit 2.2:** optional „Runde detailliert tracken“ (Putts, GIR, FIR, Bunker, Sand Save, Up & Down, Strafschläge, private Notiz – ein Loch pro Ansicht), „Statistiken ergänzen“ für gespeicherte Runden, Statistikseite mit Filtern und Verläufen, **Community** mit Ranking (nur mit Zustimmung), Mitgliederprofilen und geteilten Runden (Nur ich / Basisdaten / Details). Mobil: untere Navigation Home · HCP · Runden · Community · Profil |
+| Admin (`/admin`) | Eigenes Layout mit Seitenleiste und kompakten Tabellen: Dashboard, Benutzer (Filter, Detail, HCP-Ansicht, protokollierte Benutzeransicht), Runden, Community (Übersicht, Ranking, Moderation geteilter Runden, Schalter), Golfplätze, Ratings, Quellen, Datenqualität, Duplikate, Import, Änderungen, Regelwerk, System, Audit-Log, Berechtigungen, Einstellungen (inkl. Mailversand), globale Suche |
 | Berechnung | Score Differential, 9-Loch-Methode (gespielt + erwartet, DGV-PCC-Tabelle), Course Handicap 9/18, Netto-Doppelbogey/GBE, WHS-Tabelle (3–20 Ergebnisse), ESR rückwirkend, Low HCPI, Soft/Hard Cap, 26,5-Bremse, Tageslogik, abgebrochene Runden 10–17, Stableford, Ergebnisarten |
 | Golfplatzdaten | Anlage → Platz/Layout → Rating-Set (Abschlag, Geschlecht, 9/18, Front/Back, Gültigkeit, Quelle, Prüfdatum, verifiziert) → Löcher; CSV-Import mit Vorschau, Datenqualität, Duplikate, Änderungsprotokoll, Bayern-Importer |
 
@@ -23,6 +23,10 @@ Drei getrennte Bereiche mit eigener Navigation und eigenem Layout:
 Sitzung des Backends; jede Admin-Aktion wird serverseitig geprüft, Mitglieder bekommen nur ihre eigenen Daten
 ausgeliefert. Kritische Aktionen (Rollen, Status, Passwort-Reset, Benutzeransicht, Runden- und Platzänderungen) landen
 im Audit-Log mit Zeitpunkt, Admin, betroffenem Benutzer, altem und neuem Wert.
+
+**Community und Statistik** sind strikt Opt-in: Ohne Zustimmung ist ein Mitglied nirgends sichtbar. Die API liefert
+private Runden, E-Mail-Adressen und interne IDs nie an andere Mitglieder aus; Notizen bleiben privat, solange sie
+nicht ausdrücklich freigegeben sind. Statistiken verändern das Handicap nicht. Details: [`docs/COMMUNITY.md`](docs/COMMUNITY.md).
 
 ## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
 
@@ -122,7 +126,8 @@ API beider Editionen: [`docs/openapi.yaml`](docs/openapi.yaml). Das Frontend spr
 ## Dokumentation
 
 - [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md) – Aufbau, Bereiche, API-Adapter, Rechte, Regel-Engine, Datenmodell, Rundungspunkte
-- [`docs/openapi.yaml`](docs/openapi.yaml) – API (Auth, Mitglied, Admin)
+- [`docs/COMMUNITY.md`](docs/COMMUNITY.md) – Community, Ranking, Privatsphäre, Golfstatistik (Definitionen, Speicherung, Grenzen)
+- [`docs/openapi.yaml`](docs/openapi.yaml) – API (Auth, Mitglied, Community, Admin)
 - [`docs/WEBSPACE.md`](docs/WEBSPACE.md) – Webspace-Edition: Installation, Update, Sicherheit, Aufbau
 - [`docs/ABSCHLUSS-CHECK.md`](docs/ABSCHLUSS-CHECK.md) – Checkliste aus der Spezifikation mit Status
 - [`docs/DATENSTATUS-BAYERN.md`](docs/DATENSTATUS-BAYERN.md) – Datenstand Golfplätze

@@ -391,6 +391,127 @@ export const mailLog = pgTable("mail_log", {
   status: text("status").notNull(),
 });
 
+// ---------------------------------------------------------------------------
+// Community und Golfstatistik (aus den Mitglieder-Dokumenten abgeleitet – Quelle bleibt member_data)
+// ---------------------------------------------------------------------------
+
+/**
+ * Community-Profil je Mitglied: Einstellungen, aktueller HCPI und freigegebene Kennzahlen. Wird nach jeder
+ * Änderung am Mitglieder-Dokument serverseitig neu berechnet (Ranking ohne Neuberechnung aller Mitglieder).
+ */
+export const communityProfiles = pgTable(
+  "community_profiles",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    publicId: text("public_id").notNull(),
+    displayName: text("display_name").notNull(),
+    initials: text("initials").notNull(),
+    avatarVersion: integer("avatar_version"),
+    rankingVisible: boolean("ranking_visible").notNull().default(false),
+    profileVisible: boolean("profile_visible").notNull().default(false),
+    roundsVisible: boolean("rounds_visible").notNull().default(false),
+    statsVisible: boolean("stats_visible").notNull().default(false),
+    notesVisible: boolean("notes_visible").notNull().default(false),
+    handicapIndex: doublePrecision("handicap_index"),
+    roundsCount: integer("rounds_count").notNull().default(0),
+    publicRoundsCount: integer("public_rounds_count").notNull().default(0),
+    homeCourseId: text("home_course_id"),
+    homeCourseName: text("home_course_name"),
+    region: text("region"),
+    /** nur bei freigegebener Statistik */
+    performance: jsonb("performance"),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("community_profiles_public_idx").on(t.publicId),
+    index("community_profiles_ranking_idx").on(t.rankingVisible, t.handicapIndex),
+    index("community_profiles_profile_idx").on(t.profileVisible, t.displayName),
+  ],
+);
+
+/** Für Mitglieder freigegebene Runden (Stufe BASIC/FULL) – nur freigegebene Felder. */
+export const publicRounds = pgTable(
+  "public_rounds",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roundId: text("round_id").notNull(),
+    level: text("level").notNull(),
+    date: date("date").notNull(),
+    courseId: text("course_id"),
+    courseName: text("course_name").notNull(),
+    holes: smallint("holes").notNull(),
+    /** vollständiger freigegebener Datensatz (PublicRoundRecord) */
+    record: jsonb("record").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("public_rounds_pk").on(t.userId, t.roundId),
+    index("public_rounds_created_idx").on(t.createdAt),
+    index("public_rounds_user_date_idx").on(t.userId, t.date),
+    index("public_rounds_course_idx").on(t.courseId),
+    check("public_rounds_level_check", sql`${t.level} in ('BASIC', 'FULL')`),
+  ],
+);
+
+/** Täglicher Ranking-Stand (für Trend „+4 Plätze“ und Verlaufsdiagramme). */
+export const rankingSnapshots = pgTable(
+  "ranking_snapshots",
+  {
+    snapshotDate: date("snapshot_date").notNull(),
+    scope: text("scope").notNull().default("ALL"),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    handicapIndex: doublePrecision("handicap_index").notNull(),
+  },
+  (t) => [uniqueIndex("ranking_snapshots_pk").on(t.snapshotDate, t.scope, t.userId), index("ranking_snapshots_user_idx").on(t.userId, t.snapshotDate)],
+);
+
+/** Index aller Runden (auch private): Statistik, Sichtbarkeit, Moderation – nur für aggregierte Auswertungen und Moderation im Admin-Bereich. */
+export const roundStatistics = pgTable(
+  "round_statistics",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roundId: text("round_id").notNull(),
+    date: date("date").notNull(),
+    holes: smallint("holes").notNull(),
+    courseId: text("course_id"),
+    /** true: Lochstatistik erfasst */
+    detailed: boolean("detailed").notNull().default(false),
+    /** vollständig erfasst (alle Löcher mit Schlägen, Putts, GIR, Strafschlägen) */
+    complete: boolean("complete").notNull().default(false),
+    /** Anzahl Hinweise der Plausibilitätsprüfung (z. B. Statistik ohne Schlagzahl) */
+    warnings: smallint("warnings").notNull().default(0),
+    /** gewählte Sichtbarkeit und Moderation (für die Übersicht im Admin-Bereich) */
+    visibility: text("visibility").notNull().default("PRIVATE"),
+    hidden: boolean("hidden").notNull().default(false),
+    courseName: text("course_name").notNull().default(""),
+    stats: jsonb("stats"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("round_statistics_pk").on(t.userId, t.roundId), index("round_statistics_course_idx").on(t.courseId), index("round_statistics_visibility_idx").on(t.visibility, t.hidden)],
+);
+
+/** Profilbilder (verkleinert im Browser, höchstens 150 KB). */
+export const userAvatars = pgTable("user_avatars", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(),
+  version: integer("version").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type AuditRow = typeof auditLog.$inferSelect;

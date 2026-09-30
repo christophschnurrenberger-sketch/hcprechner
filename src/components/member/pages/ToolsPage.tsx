@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -187,13 +188,21 @@ export function ToolsPage() {
   const [tab, setTab] = useState<Tab>("stats");
   return (
     <div className="space-y-5">
-      <PageHeader title="Werkzeuge & Statistik" description="Zusätzliche Auswertungen – alle Berechnungen kommen vom Server." />
+      <PageHeader
+        title="Werkzeuge"
+        description="Auswertungen rund um dein Handicap – alle Berechnungen kommen vom Server."
+        actions={
+          <Link href="/member/stats" className="text-sm font-medium text-brand hover:underline">
+            Golfstatistik (Putts, GIR, FIR)
+          </Link>
+        }
+      />
       <Segmented
         name="Werkzeug"
         value={tab}
         onChange={setTab}
         options={[
-          { value: "stats", label: "Statistik" },
+          { value: "stats", label: "HCP-Auswertung" },
           { value: "whatif", label: "Was wäre wenn" },
           { value: "target", label: "Ziel" },
         ]}

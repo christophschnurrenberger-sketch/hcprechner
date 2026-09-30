@@ -12,9 +12,12 @@ import { apiError } from "@/lib/api/errors";
 import type { RoundInput } from "@/lib/api/types";
 import { holesFor, selectRatingSet, toRatingSnapshot } from "@/lib/courses/ratingSelection";
 import type { CourseDto } from "@/lib/courses/types";
+import { holeNumbersFor, holeStatsSchema, hasAnyStat, validateHoleStats } from "@/lib/stats/holeStats";
+import type { HoleStat } from "@/lib/stats/types";
 import { isIsoDate } from "@/lib/whs/dates";
-import type { EntryMode, HoleInfo, HoleScore, RatingSnapshot, Round } from "@/lib/whs/types";
+import type { EntryMode, HoleInfo, HoleScore, RatingSnapshot } from "@/lib/whs/types";
 import { fieldErrors } from "@/lib/auth/validation";
+import type { MemberRound } from "./round";
 
 const gender = z.enum(["M", "F"]);
 const holeScore = z.union([z.number().int().min(1).max(20), z.literal("PICKUP"), z.null()]);
@@ -66,6 +69,8 @@ export const roundInputSchema = z
       .optional(),
     pcc: z.union([z.literal(-1), z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).optional(),
     notes: z.string().trim().max(1000).optional(),
+    visibility: z.enum(["PRIVATE", "MEMBERS_BASIC", "MEMBERS_FULL"]).optional(),
+    holeStats: z.unknown().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.score.mode !== "DIFFERENTIAL" && !v.course) ctx.addIssue({ code: "custom", path: ["course"], message: "Bitte einen Golfplatz wählen." });
@@ -85,7 +90,7 @@ export interface CourseLookup {
 
 export interface ResolveOptions {
   /** Runde, die bearbeitet wird (ID, Erstellzeit und Tagesreihenfolge bleiben erhalten). */
-  existing?: Round | null;
+  existing?: MemberRound | null;
   id: string;
   sequence: number;
   now?: Date;
@@ -113,17 +118,51 @@ function entryModeFor(input: RoundInput): EntryMode {
   }
 }
 
+/** Prüft Lochstatistik aus einer Eingabe; wirft VALIDATION mit verständlicher Meldung. */
+export function parseHoleStats(raw: unknown): HoleStat[] {
+  const parsed = holeStatsSchema.safeParse(raw);
+  if (!parsed.success) throw apiError("VALIDATION", "Die Lochstatistik ist unvollständig oder ungültig.", { holeStats: "Bitte die Angaben je Loch prüfen." });
+  return parsed.data.map((h) => ({ ...h, strokeIndex: h.strokeIndex ?? null, note: h.note ? h.note : null }));
+}
+
+/**
+ * Lochstatistik an die Runde anpassen: Par/Handicap aus den Platzdaten (falls vorhanden), bei Eingabe
+ * „Loch für Loch“ die WHS-Schläge als Schlagzahl (diese sind maßgeblich und hier nicht änderbar).
+ */
+export function alignHoleStats(stats: readonly HoleStat[], base: readonly HoleInfo[] | null, whsStrokes: readonly HoleScore[] | null): HoleStat[] {
+  const info = new Map((base ?? []).map((h, i) => [h.number, { h, i }]));
+  return stats.map((s) => {
+    const b = info.get(s.number);
+    let next: HoleStat = b ? { ...s, par: b.h.par, strokeIndex: b.h.strokeIndex ?? null } : s;
+    if (whsStrokes) {
+      const raw = b ? whsStrokes[b.i] : undefined;
+      next = { ...next, score: typeof raw === "number" ? raw : null };
+    }
+    return next;
+  });
+}
+
+/** Lochstatistik prüfen (Fehler → VALIDATION); leere Statistik → undefined. */
+export function checkedHoleStats(stats: HoleStat[], numbers: number[]): HoleStat[] | undefined {
+  const v = validateHoleStats(stats, numbers);
+  if (v.errors.length > 0) throw apiError("VALIDATION", v.errors[0].message, { holeStats: v.errors.map((e) => e.message).join(" ") });
+  return stats.some((h) => hasAnyStat(h)) ? stats : undefined;
+}
+
 /**
  * Baut die unveränderliche Runde (Snapshot aller verwendeten Werte). Bei DB-Plätzen gilt das zum
  * Spieldatum gültige, verifizierte Rating; fehlt es, wird die Runde mit einem klaren Fehler abgelehnt.
+ * Lochstatistik und Sichtbarkeit werden getrennt davon übernommen und beeinflussen die Berechnung nicht.
  */
-export async function resolveRound(input: RoundInput, lookup: CourseLookup, options: ResolveOptions): Promise<Round> {
+export async function resolveRound(input: RoundInput, lookup: CourseLookup, options: ResolveOptions): Promise<MemberRound> {
   const now = (options.now ?? new Date()).toISOString();
   const entryMode = entryModeFor(input);
   const usesHoles = entryMode === "HOLE_BY_HOLE" || entryMode === "STABLEFORD_HOLES";
   let rating: RatingSnapshot = { holes: input.holes, par: null, courseRating: null, slopeRating: null };
   let holeData: HoleInfo[] | undefined;
-  let course: Round["course"] = { courseName: "Ohne Platzangabe", country: "DE" };
+  let courseHoles: HoleInfo[] | null = null;
+  let nineForNumbers: "FRONT" | "BACK" | null = null;
+  let course: MemberRound["course"] = { courseName: "Ohne Platzangabe", country: "DE" };
 
   if (input.course?.kind === "DB") {
     const ci = input.course;
@@ -132,6 +171,8 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
     const layout = dto.layouts.find((l) => l.id === ci.layoutId && l.active);
     if (!layout) throw apiError("COURSE_NOT_FOUND", "Dieser Platz (Layout) ist nicht mehr verfügbar.");
     const nine = input.holes === 9 && layout.holesCount >= 18 ? input.nine ?? "FRONT" : null;
+    nineForNumbers = nine;
+    courseHoles = holesFor(layout, { gender: ci.gender, teeColor: ci.teeColor, holes: input.holes, nine });
     const selection = selectRatingSet(layout.ratingSets, { date: input.date, gender: ci.gender, teeColor: ci.teeColor, holes: input.holes, nine });
     let playerConfirmed = false;
     if (selection.status === "NOT_VERIFIED" && selection.ratingSet) {
@@ -146,9 +187,8 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
     const ratingSet = selection.ratingSet!;
     rating = playerConfirmed ? { ...toRatingSnapshot(ratingSet), playerConfirmed: true } : toRatingSnapshot(ratingSet);
     if (usesHoles) {
-      const holes = holesFor(layout, { gender: ci.gender, teeColor: ci.teeColor, holes: input.holes, nine });
-      if (!holes) throw apiError("HOLE_DATA_MISSING");
-      holeData = holes;
+      if (!courseHoles) throw apiError("HOLE_DATA_MISSING");
+      holeData = courseHoles;
     }
     course = {
       courseId: dto.id,
@@ -164,6 +204,7 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
     };
   } else if (input.course?.kind === "MANUAL") {
     const ci = input.course;
+    nineForNumbers = input.holes === 9 ? input.nine ?? null : null;
     rating = {
       holes: input.holes,
       par: ci.par,
@@ -178,6 +219,7 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
       if (!input.holeData || input.holeData.length !== input.holes) throw apiError("HOLE_DATA_MISSING", "Bitte Par und Handicap für jedes Loch angeben.");
       holeData = input.holeData;
     }
+    courseHoles = input.holeData && input.holeData.length === input.holes ? input.holeData : null;
     course = { courseName: ci.courseName, city: ci.city ?? null, country: ci.country ?? "DE", teeColor: ci.teeColor ?? null, gender: ci.gender };
   }
 
@@ -185,6 +227,19 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
   const strokes: HoleScore[] | undefined = score.mode === "HOLES" ? score.strokes : undefined;
   const played = strokes ? strokes.filter((s) => s !== null).length : null;
   const partial = input.holes === 18 && strokes && played !== null && played < 18 ? played : null;
+
+  // Golfstatistik (getrennt von den WHS-Daten): aus der Eingabe oder – beim Bearbeiten ohne Angabe – bisherige
+  const numbers = holeNumbersFor(input.holes, nineForNumbers);
+  const align = (stats: HoleStat[]) => alignHoleStats(stats, holeData ?? courseHoles, strokes ?? null);
+  let holeStats: HoleStat[] | undefined;
+  if (input.holeStats !== undefined && input.holeStats !== null) {
+    holeStats = checkedHoleStats(align(parseHoleStats(input.holeStats)), numbers);
+  } else if (input.holeStats === undefined && options.existing?.holeStats?.length) {
+    // bisherige Statistik übernehmen, solange sie zu den Löchern passt (sonst entfällt sie – Hinweis in der Vorschau)
+    const kept = align(options.existing.holeStats);
+    const fits = kept.length === numbers.length && validateHoleStats(kept, numbers).errors.length === 0;
+    holeStats = fits ? kept : undefined;
+  }
 
   return {
     id: options.id,
@@ -216,11 +271,14 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
     updatedAt: now,
     status: "COMPLETED",
     deletedAt: null,
+    visibility: input.visibility ?? options.existing?.visibility ?? "PRIVATE",
+    ...(holeStats ? { holeStats } : {}),
+    ...(options.existing?.moderation ? { moderation: options.existing.moderation } : {}),
   };
 }
 
 /** Eingabe aus einer gespeicherten Runde (zum Bearbeiten im Wizard). */
-export function roundToInput(round: Round): RoundInput {
+export function roundToInput(round: MemberRound): RoundInput {
   const course: RoundInput["course"] =
     round.entry.mode === "SCORE_DIFFERENTIAL" && round.rating.courseRating == null
       ? null
@@ -270,5 +328,7 @@ export function roundToInput(round: Round): RoundInput {
     holeData: round.rating.manual ? round.holeData ?? null : null,
     pcc: round.pcc,
     notes: round.notes,
+    visibility: round.visibility ?? "PRIVATE",
+    holeStats: round.holeStats ?? null,
   };
 }

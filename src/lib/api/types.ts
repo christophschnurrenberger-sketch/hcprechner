@@ -3,6 +3,9 @@
  * Das Frontend zeigt nur an – berechnet wird im Backend bzw. in der Service-Schicht (src/lib/member).
  */
 import type { Permission, Role, UserStatus } from "@/lib/auth/permissions";
+import type { CommunityFlags, CommunitySettings, MyRanking, RoundModeration, RoundVisibility } from "@/lib/community/types";
+import type { HoleStat, RoundStatistics } from "@/lib/stats/types";
+import type { MemberRound } from "@/lib/member/round";
 import type { CourseSummary } from "@/lib/courses/summary";
 import type { CourseDto } from "@/lib/courses/types";
 import type {
@@ -46,6 +49,8 @@ export interface PublicSettings {
   imprintText: string | null;
   privacyText: string | null;
   contactEmail: string | null;
+  /** Community-Schalter des Betreibers (nicht geheim; steuern Navigation und Anzeige) */
+  community: CommunityFlags;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +108,13 @@ export interface RoundInput {
   holeData?: HoleInfo[] | null;
   pcc?: PccValue;
   notes?: string;
+  /** Wer darf die Runde sehen? (Standard: privat) */
+  visibility?: RoundVisibility;
+  /**
+   * Optionale Lochstatistik (Putts, GIR, FIR, Bunker, Up & Down, Strafschläge, Notiz). Reine Spielleistung –
+   * ändert weder GBE noch Score Differential. Bei Eingabe „Loch für Loch“ gelten die WHS-Schläge.
+   */
+  holeStats?: HoleStat[] | null;
 }
 
 export interface DraftRound {
@@ -187,6 +199,10 @@ export interface DashboardData {
   hcp: HcpResult;
   roundsCount: number;
   drafts: DraftRound[];
+  /** Letzte Runde mit Lochstatistik (höchstens einige Kennzahlen auf der Startseite) */
+  lastStats: { roundId: string; date: IsoDate; courseName: string; holes: 9 | 18; stats: RoundStatistics } | null;
+  /** Ranking-Position (nur wenn Community aktiv) – vom Backend ergänzt */
+  ranking?: MyRanking | null;
 }
 
 export interface RoundDetail {
@@ -197,6 +213,15 @@ export interface RoundDetail {
   result: RoundResult;
   /** z. B. „Beste 4 von 12“ zum Zeitpunkt der Runde */
   recordLabelAtTime: string;
+  visibility: RoundVisibility;
+  /** Lochstatistik und daraus berechnete Werte (Spielleistung) */
+  holeStats: HoleStat[] | null;
+  stats: RoundStatistics | null;
+  insights: string[];
+  /** Schläge je Loch stammen aus der WHS-Eingabe und sind in der Statistik nicht änderbar */
+  scoresLocked: boolean;
+  /** Admin hat die Runde für andere Mitglieder verborgen */
+  moderated: boolean;
 }
 
 export interface RoundPreview {
@@ -209,6 +234,10 @@ export interface RoundPreview {
   issues: string[];
   /** true: Runde kann so nicht gespeichert werden (z. B. GBE über dem Netto-Doppelbogey-Maximum). */
   blocking: boolean;
+  /** Hinweise zur Lochstatistik (ungewöhnliche, aber mögliche Angaben) */
+  statsWarnings: string[];
+  /** Statistik der Runde (falls Lochdaten erfasst) */
+  stats: RoundStatistics | null;
 }
 
 export interface RoundSaveResult extends RoundPreview {
@@ -276,6 +305,14 @@ export interface AdminUserDetail extends AdminUserRow {
   /** Darf der angemeldete Admin dieses Konto bearbeiten / die Rolle ändern? (serverseitig ermittelt) */
   canManage?: boolean;
   canAssignRole?: boolean;
+  /** Community- und Privatsphäre-Status */
+  community: {
+    settings: CommunitySettings;
+    displayName: string;
+    publicRounds: number;
+    hiddenRounds: number;
+    detailedRounds: number;
+  };
 }
 
 /** Lesende Benutzeransicht für Support (wird im Audit-Log protokolliert). */
@@ -302,12 +339,16 @@ export interface AdminRoundRow {
 
 export interface AdminRoundDetail {
   user: { id: string; name: string; email: string | null };
-  round: Round;
+  /** Runde inkl. Lochstatistik, Sichtbarkeit und Moderation */
+  round: MemberRound;
   /** Neu berechnet mit der aktuellen Engine */
   result: RoundResult | null;
   item: RoundListItem | null;
   engine: string;
   computedAt: string;
+  stats: RoundStatistics | null;
+  visibility: RoundVisibility;
+  moderation: RoundModeration | null;
 }
 
 export interface AuditEntry {

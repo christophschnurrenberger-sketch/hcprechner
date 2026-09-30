@@ -22,6 +22,7 @@ import { clearSession, csrfToken, issueSession, requireUser, sessionUser, sessio
 import { getSettings, publicSettings } from "@/server/settings";
 import { consumeToken, countActiveSuperAdmins, createToken, updateUser, userByEmail, userByLogin } from "@/server/users";
 import { APP_VERSION } from "@/lib/member/engine";
+import { syncCommunitySafe } from "@/server/community";
 
 export const dynamic = "force-dynamic";
 
@@ -233,6 +234,7 @@ export async function POST(req: Request, ctx: Ctx) {
           await sendVerificationMail(updated, input.email, token);
         }
         await audit("USER_PROFILE_UPDATED", updated, { userId: user.id, entityType: "user", entityId: user.id, oldValue: old, newValue: { firstName: input.firstName, lastName: input.lastName, email: input.email } });
+        await syncCommunitySafe(updated.id);
         return json({ user: await sessionView(updated), pendingEmail: updated.pendingEmail });
       }
 

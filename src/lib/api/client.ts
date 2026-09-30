@@ -1,7 +1,7 @@
 /**
  * API-Adapter: die einzige Schnittstelle der Oberfläche zum Backend.
  *
- * - Node-Edition:     Route Handler unter /api/auth, /api/me, /api/admin (Berechnung auf dem Server)
+ * - Node-Edition:     Route Handler unter /api/auth, /api/me, /api/community, /api/admin (Berechnung auf dem Server)
  * - Webspace-Edition: PHP (Anmeldung, Rollen, Datentrennung, Speicherung, Audit) + gemeinsame
  *                     Service-Schicht src/lib/member für die Berechnung (PHP kann kein TypeScript ausführen)
  *
@@ -38,6 +38,25 @@ import type {
   SessionUser,
   SystemStatus,
 } from "./types";
+import type {
+  ActivityItem,
+  AdminCommunityOverview,
+  AdminPublicRoundRow,
+  AdminRankingRow,
+  CommunityPage,
+  CommunitySettingsInput,
+  MemberListItem,
+  ModerationAction,
+  MyCommunity,
+  MyRanking,
+  PublicProfileView,
+  PublicRoundSummary,
+  PublicRoundView,
+  RankingResponse,
+  RankingScope,
+  RoundVisibility,
+} from "@/lib/community/types";
+import type { HoleStat, PerformanceFilter, PerformanceReport, RoundStatistics } from "@/lib/stats/types";
 import type { PlayerStatistics } from "@/lib/whs/statistics";
 import type { TargetAnalysis, WhatIfResult } from "@/lib/whs/simulation";
 import type { Gender, HoleInfo, HoleScore, PccValue, RoundEvaluation } from "@/lib/whs/types";
@@ -116,10 +135,44 @@ export interface MemberApi {
   deleteDraft(id: string): Promise<void>;
   importPreview(csv: string): Promise<ImportPreview>;
   importRounds(csv: string): Promise<{ imported: number; skipped: number }>;
+  /** WHS-Auswertung der Score Differentials (Werkzeuge) */
   statistics(): Promise<PlayerStatistics>;
+  /** Golfstatistik (Spielleistung) mit Filtern und Verlauf */
+  performance(filter?: PerformanceFilter): Promise<PerformanceReport>;
+  /** Lochstatistik einer gespeicherten Runde ergänzen/ändern – das Handicap bleibt unverändert */
+  saveRoundStats(roundId: string, holeStats: HoleStat[] | null): Promise<{ stats: RoundStatistics | null; warnings: string[] }>;
+  setRoundVisibility(roundId: string, visibility: RoundVisibility): Promise<void>;
+  community(): Promise<MyCommunity>;
+  saveCommunity(input: CommunitySettingsInput): Promise<MyCommunity>;
+  saveAvatar(dataUrl: string): Promise<MyCommunity>;
+  deleteAvatar(): Promise<MyCommunity>;
+  myRanking(): Promise<{ ranking: MyRanking | null; history: RankingHistoryPoint[] }>;
   simulate(scoreDifferential: number): Promise<WhatIfResult>;
   target(target: number): Promise<TargetAnalysis>;
   gbe(input: GbeToolInput): Promise<RoundEvaluation>;
+}
+
+export interface RankingHistoryPoint {
+  date: string;
+  position: number;
+  handicapIndex: number;
+}
+
+/** Community für Mitglieder – ausschließlich freigegebene Daten (Filterung im Backend). */
+export interface CommunityApi {
+  ranking(params?: { scope?: RankingScope; page?: number }): Promise<RankingResponse>;
+  members(params?: { q?: string; sort?: "HCP" | "NAME" | "ACTIVITY"; page?: number }): Promise<CommunityPage<MemberListItem>>;
+  member(publicId: string): Promise<PublicProfileView>;
+  memberRounds(publicId: string, page?: number): Promise<CommunityPage<PublicRoundSummary>>;
+  activity(page?: number): Promise<CommunityPage<ActivityItem>>;
+  round(publicId: string, roundId: string): Promise<PublicRoundView>;
+}
+
+export interface CommunityAdminFilter {
+  filter?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface UserListFilter {
@@ -172,11 +225,19 @@ export interface AdminApi {
   saveSettings(input: AdminSettingsInput): Promise<AdminSettings>;
   mailTest(to: string): Promise<{ ok: boolean; mode: string }>;
   search(q: string): Promise<AdminSearchResult>;
+  communityOverview(): Promise<AdminCommunityOverview>;
+  communityRanking(filter: CommunityAdminFilter): Promise<Page<AdminRankingRow>>;
+  communityRounds(filter: CommunityAdminFilter): Promise<Page<AdminPublicRoundRow>>;
+  moderateRound(userId: string, roundId: string, action: ModerationAction, reason?: string): Promise<void>;
+  refreshRanking(): Promise<{ users: number; snapshotDate: string }>;
+  /** Sichtbarkeit eines Mitglieds abschalten (Einschalten nur durch das Mitglied selbst) */
+  hideUserCommunity(userId: string, patch: { rankingVisible?: false; profileVisible?: false }): Promise<void>;
 }
 
 export interface HcpApi {
   auth: AuthApi;
   member: MemberApi;
+  community: CommunityApi;
   admin: AdminApi;
 }
 
@@ -199,5 +260,6 @@ const loadImpl = (): Promise<HcpApi> => (IS_WEBSPACE ? import("./webspace").then
 export const api: HcpApi = {
   auth: lazy(() => loadImpl().then((i) => i.auth)),
   member: lazy(() => loadImpl().then((i) => i.member)),
+  community: lazy(() => loadImpl().then((i) => i.community)),
   admin: lazy(() => loadImpl().then((i) => i.admin)),
 };

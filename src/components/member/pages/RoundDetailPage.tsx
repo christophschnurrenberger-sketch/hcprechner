@@ -3,16 +3,38 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, BarChart3, ChevronDown, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { userMessage } from "@/lib/api/errors";
 import type { RoundDetail } from "@/lib/api/types";
 import { CATEGORY_LABELS, EXCLUSION_TEXTS, HOLE_REASON_TEXTS, METHOD_LABELS, SOURCE_TYPE_LABELS, relevanceText } from "@/lib/whs/messages";
 import { cn, formatDate, formatDecimal, formatHcp, formatPcc } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
-import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardHeader } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardHeader, EmptyState, Segmented } from "@/components/ui";
 import { ConfirmDialog, ErrorState, PageSkeleton, useToast } from "@/components/ui/feedback";
 import { ChangeBadge } from "@/components/member/HcpHero";
+import { roundStatsHref } from "@/components/member/RoundList";
+import { RoundVisibilityControl, usePublicRoundsEnabled } from "@/components/community/Visibility";
+import { Scorecard } from "@/components/stats/Scorecard";
+import { CompletenessBadge, RoundStatsSummary } from "@/components/stats/StatsUi";
+
+type Tab = "summary" | "scorecard" | "stats";
+
+function NoStats({ id }: { id: string }) {
+  return (
+    <EmptyState
+      icon={<BarChart3 className="h-8 w-8" />}
+      title="Keine Lochstatistik"
+      action={
+        <ButtonLink href={roundStatsHref(id)} variant="subtle">
+          Statistiken ergänzen
+        </ButtonLink>
+      }
+    >
+      Erfasse Putts, Grüns, Fairways, Bunker und Strafschläge je Loch. Dein Handicap bleibt dabei unverändert.
+    </EmptyState>
+  );
+}
 
 /** Rechenweg einer Runde – nur Anzeige der vom Backend gelieferten Zwischenwerte. */
 export function CalculationDetails({ detail }: { detail: RoundDetail | { round: RoundDetail["round"]; result: RoundDetail["result"]; recordLabelAtTime?: string } }) {
@@ -120,6 +142,8 @@ export function RoundDetailPage() {
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<Tab>(params.get("tab") === "stats" ? "stats" : params.get("tab") === "scorecard" ? "scorecard" : "summary");
+  const publicRounds = usePublicRoundsEnabled();
   const { data, error, reload } = useApi(() => api.member.round(id), id);
 
   if (error && !data) return <ErrorState error={error} onRetry={reload} />;
@@ -149,6 +173,53 @@ export function RoundDetailPage() {
         </div>
       </div>
 
+      {data.moderated && (
+        <Alert tone="warning" title="Für andere Mitglieder ausgeblendet">
+          Die Administration hat diese Runde in der Community ausgeblendet. Für dich und dein Handicap ändert sich nichts.
+        </Alert>
+      )}
+
+      <Segmented
+        name="Ansicht"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "summary", label: "Zusammenfassung" },
+          { value: "scorecard", label: "Scorekarte" },
+          { value: "stats", label: "Statistik" },
+        ]}
+      />
+
+      {tab === "scorecard" &&
+        (data.holeStats ? (
+          <Card>
+            <CardHeader
+              title="Scorekarte"
+              subtitle={data.stats ? <CompletenessBadge stats={data.stats} /> : undefined}
+              action={<ButtonLink href={roundStatsHref(item.id)} variant="secondary" size="sm">Bearbeiten</ButtonLink>}
+            />
+            <CardBody>
+              <Scorecard holes={data.holeStats} showNotes />
+            </CardBody>
+          </Card>
+        ) : (
+          <NoStats id={item.id} />
+        ))}
+
+      {tab === "stats" &&
+        (data.stats ? (
+          <Card>
+            <CardHeader title="Statistik dieser Runde" action={<ButtonLink href={roundStatsHref(item.id)} variant="secondary" size="sm">Bearbeiten</ButtonLink>} />
+            <CardBody>
+              <RoundStatsSummary stats={data.stats} insights={data.insights} />
+            </CardBody>
+          </Card>
+        ) : (
+          <NoStats id={item.id} />
+        ))}
+
+      {tab === "summary" && (
+      <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-border bg-surface p-4">
           <p className="text-xs text-ink-3">GBE</p>
@@ -191,11 +262,52 @@ export function RoundDetailPage() {
         </details>
       </Card>
 
+      {data.stats ? (
+        <Card>
+          <CardHeader title="Statistik" subtitle={<CompletenessBadge stats={data.stats} />} action={<button type="button" onClick={() => setTab("stats")} className="text-sm font-medium text-brand hover:underline">Details</button>} />
+          <CardBody className="grid grid-cols-3 gap-3 text-center">
+            {[
+              { label: "Putts", value: data.stats.totalPutts ?? "–" },
+              { label: "GIR", value: data.stats.girHoles ? `${data.stats.girs}/${data.stats.girHoles}` : "–" },
+              { label: "Fairways", value: data.stats.fairwayOpportunities ? `${data.stats.firs}/${data.stats.fairwayOpportunities}` : "–" },
+            ].map((k) => (
+              <div key={k.label} className="rounded-xl bg-surface-2 py-2.5">
+                <p className="text-xs text-ink-3">{k.label}</p>
+                <p className="tabular text-lg font-semibold text-ink">{k.value}</p>
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      ) : (
+        <Card>
+          <CardBody className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-ink">Runde detailliert tracken?</p>
+              <p className="text-sm text-ink-3">Putts, Grüns und Fairways je Loch ergänzen – das Handicap bleibt gleich.</p>
+            </div>
+            <ButtonLink href={roundStatsHref(item.id)} variant="subtle">
+              <BarChart3 className="h-4 w-4" aria-hidden /> Statistiken ergänzen
+            </ButtonLink>
+          </CardBody>
+        </Card>
+      )}
+
+      {publicRounds && (
+        <Card>
+          <CardHeader title="Wer darf diese Runde sehen?" subtitle={data.moderated ? <span className="inline-flex items-center gap-1"><EyeOff className="h-3.5 w-3.5" aria-hidden /> derzeit von der Administration ausgeblendet</span> : "Notizen bleiben immer privat, außer du gibst sie ausdrücklich frei."} />
+          <CardBody>
+            <RoundVisibilityControl roundId={item.id} initial={data.visibility} />
+          </CardBody>
+        </Card>
+      )}
+
       {round.notes && (
         <Card>
-          <CardHeader title="Notiz" />
+          <CardHeader title="Notiz" subtitle="privat" />
           <CardBody className="text-sm text-ink-2">{round.notes}</CardBody>
         </Card>
+      )}
+      </>
       )}
 
       <ConfirmDialog

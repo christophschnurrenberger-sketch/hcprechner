@@ -12,6 +12,8 @@ import { PERMISSION_LABELS, ROLES, ROLE_LABELS, ROLE_PERMISSIONS, type Permissio
 import { adminCoursePath } from "@/lib/courses/paths";
 import { cn } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
+import type { CommunityFlags } from "@/lib/community/types";
+import { FLAG_LABELS } from "./CommunityAdminPages";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { ErrorState, PageSkeleton, PasswordInput, useToast } from "@/components/ui/feedback";
 import { useSession } from "@/components/session/SessionProvider";
@@ -351,6 +353,7 @@ function SettingsForm({ initial, onSaved }: { initial: AdminSettings; onSaved: (
               mailFrom: s.mailFrom ?? "",
               imprintText: s.imprintText ?? "",
               privacyText: s.privacyText ?? "",
+              community: s.community,
               ...(s.mail.editable ? { siteUrl: s.siteUrl, mail: { mode: s.mail.mode, host: s.mail.host, port: s.mail.port, secure: s.mail.secure, user: s.mail.user, pass: smtpPass } } : {}),
             } as never);
             setS(saved);
@@ -376,6 +379,21 @@ function SettingsForm({ initial, onSaved }: { initial: AdminSettings; onSaved: (
             </Field>
             <Checkbox checked={s.registrationOpen} onChange={(v) => set({ registrationOpen: v })} label="Registrierung für alle offen" description="Aus: Konten legt nur ein Admin an." />
             <Checkbox checked={s.emailVerificationRequired} onChange={(v) => set({ emailVerificationRequired: v })} label="E-Mail-Bestätigung erforderlich" description="Neue Konten können sich erst nach Klick auf den Bestätigungslink anmelden." />
+          </CardBody>
+        </Card>
+        <Card id="community">
+          <CardHeader title="Community" subtitle="Mitglieder entscheiden selbst, was sie teilen. Diese Schalter begrenzen zusätzlich, was überhaupt angeboten wird." />
+          <CardBody className="space-y-4">
+            {(Object.keys(FLAG_LABELS) as (keyof CommunityFlags)[]).map((k) => (
+              <Checkbox
+                key={k}
+                checked={s.community[k]}
+                disabled={k !== "communityEnabled" && !s.community.communityEnabled}
+                onChange={(v) => set({ community: { ...s.community, [k]: v } })}
+                label={FLAG_LABELS[k].label}
+                description={FLAG_LABELS[k].description}
+              />
+            ))}
           </CardBody>
         </Card>
         <Card>

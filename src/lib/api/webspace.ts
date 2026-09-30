@@ -12,6 +12,10 @@ import { findCourse, type CourseDataset } from "@/lib/courses/dataset";
 import { getCourseDataset } from "@/lib/courses/client";
 import { runCourseSearch, summarizeCourses } from "@/lib/courses/summary";
 import { adminRoundDetail, adminUserDetail } from "@/lib/member/admin";
+import { memberSummary, performanceOf, saveRoundStats, setRoundVisibility } from "@/lib/member/community";
+import { roundInsights } from "@/lib/stats/insights";
+import { ratesFromSums, type StatSums } from "@/lib/stats/aggregate";
+import type { AdminCommunityOverview, MyCommunity, PublicRoundView } from "@/lib/community/types";
 import { normalizeMemberDoc, type MemberDoc } from "@/lib/member/doc";
 import { APP_VERSION, BUILD_INFO } from "@/lib/member/engine";
 import { computeHcp, dashboardData, listRounds, roundDetail } from "@/lib/member/hcp";
@@ -36,14 +40,21 @@ import {
   type MemberContext,
 } from "@/lib/member/service";
 import { defaultRuleSet } from "@/rules/whs/registry";
-import type { AdminApi, AuthApi, HcpApi, MeResponse, MemberApi } from "./client";
+import type { AdminApi, AuthApi, CommunityApi, HcpApi, MeResponse, MemberApi } from "./client";
 import { ApiError } from "./errors";
 import { request, setCsrf, type RequestOptions } from "./transport";
-import type { AdminSettings, AdminUserDetail, AdminUserRow, DraftRound, MemberProfileData, SessionUser } from "./types";
+import type { AdminSettings, AdminUserDetail, AdminUserRow, DashboardData, DraftRound, MemberProfileData, SessionUser } from "./types";
 
-function php<T>(script: "auth" | "me" | "admin", action: string, options: RequestOptions = {}): Promise<T> {
-  return request<T>(phpApi(script, { action }), options);
+type DashboardRanking = NonNullable<DashboardData["ranking"]>;
+
+function php<T>(script: "auth" | "me" | "admin" | "community", action: string, options: RequestOptions = {}, query: Record<string, string | number | null | undefined> = {}): Promise<T> {
+  const params: Record<string, string> = { action };
+  for (const [k, v] of Object.entries(query)) if (v !== null && v !== undefined && v !== "") params[k] = String(v);
+  return request<T>(phpApi(script, params), options);
 }
+
+/** Zusammenfassung (HCPI, Rundenzahl, Statistik) – gleiche Service-Schicht wie der Node-Server; PHP prüft. */
+const summaryOf = (doc: MemberDoc) => memberSummary(doc);
 
 // ---------------------------------------------------------------------------
 // Sitzung
@@ -162,8 +173,8 @@ async function profileData(doc: MemberDoc): Promise<MemberProfileData> {
   return { user: me.user, profile: doc.profile, preferences: { favorites: doc.preferences.favorites, homeCourseId: doc.preferences.homeCourseId } };
 }
 
-async function savePrefs(doc: MemberDoc): Promise<number> {
-  const res = await php<{ revision: number }>("me", "prefs-save", { body: { preferences: doc.preferences } });
+async function savePrefs(doc: MemberDoc, withSummary = false): Promise<number> {
+  const res = await php<{ revision: number }>("me", "prefs-save", { body: { preferences: doc.preferences, ...(withSummary ? { summary: summaryOf(doc) } : {}) } });
   return res.revision;
 }
 
@@ -171,7 +182,8 @@ const member: MemberApi = {
   profile: async () => profileData((await loadDoc(true)).doc),
   async dashboard() {
     const user = await currentUser();
-    return dashboardData((await loadDoc(true)).doc, user.firstName);
+    const [data, ranking] = await Promise.all([loadDoc(true).then(({ doc }) => dashboardData(doc, user.firstName)), php<{ ranking: DashboardRanking }>("community", "my-ranking").catch(() => null)]);
+    return { ...data, ranking: ranking?.ranking ?? null };
   },
   hcp: async () => computeHcp((await loadDoc()).doc),
   rounds: async (filter = {}) => listRounds((await loadDoc()).doc, filter),
@@ -181,7 +193,7 @@ const member: MemberApi = {
     withRetry(async ({ doc, revision }) => {
       const r = await createRound(doc, input, ctx(), draftId);
       const round = r.doc.rounds.find((x) => x.id === r.result.roundId);
-      const res = await php<{ revision: number }>("me", "round-save", { body: { round, draftId: draftId ?? null, baseRevision: revision } });
+      const res = await php<{ revision: number }>("me", "round-save", { body: { round, draftId: draftId ?? null, baseRevision: revision, summary: summaryOf(r.doc) } });
       store(r.doc, res.revision);
       return r.result;
     }),
@@ -189,20 +201,20 @@ const member: MemberApi = {
     withRetry(async ({ doc, revision }) => {
       const r = await updateRound(doc, id, input, ctx());
       const round = r.doc.rounds.find((x) => x.id === id);
-      const res = await php<{ revision: number }>("me", "round-save", { body: { round, baseRevision: revision } });
+      const res = await php<{ revision: number }>("me", "round-save", { body: { round, baseRevision: revision, summary: summaryOf(r.doc) } });
       store(r.doc, res.revision);
       return r.result;
     }),
   deleteRound: (id) =>
     withRetry(async ({ doc, revision }) => {
       const next = deleteRound(doc, id);
-      const res = await php<{ revision: number }>("me", "round-delete", { body: { id, baseRevision: revision } });
+      const res = await php<{ revision: number }>("me", "round-delete", { body: { id, baseRevision: revision, summary: summaryOf(next) } });
       store(next, res.revision);
     }),
   saveProfile: (input) =>
     withRetry(async ({ doc, revision }) => {
       const next = setStartHandicap(doc, input.startHandicapIndex, input.gender);
-      const res = await php<{ revision: number }>("me", "profile-save", { body: { profile: next.profile, baseRevision: revision } });
+      const res = await php<{ revision: number }>("me", "profile-save", { body: { profile: next.profile, baseRevision: revision, summary: summaryOf(next) } });
       store(next, res.revision);
       return profileData(next);
     }),
@@ -210,8 +222,8 @@ const member: MemberApi = {
     withRetry(async ({ doc, revision }) => {
       const next = completeOnboarding(doc, input);
       let rev = revision;
-      if (next.profile !== doc.profile) rev = (await php<{ revision: number }>("me", "profile-save", { body: { profile: next.profile, baseRevision: revision } })).revision;
-      rev = await savePrefs(next);
+      if (next.profile !== doc.profile) rev = (await php<{ revision: number }>("me", "profile-save", { body: { profile: next.profile, baseRevision: revision, summary: summaryOf(next) } })).revision;
+      rev = await savePrefs(next, true);
       store(next, rev);
       return profileData(next);
     }),
@@ -228,7 +240,7 @@ const member: MemberApi = {
   async setHomeCourse(courseId) {
     const { doc } = await loadDoc();
     const next = setHomeCourse(doc, courseId);
-    store(next, await savePrefs(next));
+    store(next, await savePrefs(next, true));
     return { favorites: next.preferences.favorites, homeCourseId: next.preferences.homeCourseId };
   },
   drafts: async () => (await loadDoc()).doc.drafts,
@@ -250,11 +262,46 @@ const member: MemberApi = {
       if (r.imported === 0) return { imported: 0, skipped: r.skipped };
       const known = new Set(doc.rounds.map((x) => x.id));
       const rounds = r.doc.rounds.filter((x) => !known.has(x.id));
-      const res = await php<{ revision: number; imported: number }>("me", "rounds-import", { body: { rounds, baseRevision: revision } });
+      const res = await php<{ revision: number; imported: number }>("me", "rounds-import", { body: { rounds, baseRevision: revision, summary: summaryOf(r.doc) } });
       store(r.doc, res.revision);
       return { imported: res.imported, skipped: r.skipped };
     }),
   statistics: async () => statistics((await loadDoc()).doc),
+  performance: async (filter = {}) => performanceOf((await loadDoc()).doc, filter),
+  saveRoundStats: (roundId, holeStats) =>
+    withRetry(async ({ doc, revision }) => {
+      const r = await saveRoundStats(doc, roundId, holeStats ?? [], ctx().courseLookup);
+      const round = r.doc.rounds.find((x) => x.id === roundId);
+      const res = await php<{ revision: number }>("me", "round-stats-save", {
+        body: { id: roundId, holeStats: round?.holeStats ?? null, stats: round?.computed?.stats ?? null, baseRevision: revision, summary: summaryOf(r.doc) },
+      });
+      store(r.doc, res.revision);
+      return { stats: r.stats, warnings: r.warnings };
+    }),
+  setRoundVisibility: (roundId, visibility) =>
+    withRetry(async ({ doc }) => {
+      const next = setRoundVisibility(doc, roundId, visibility);
+      const res = await php<{ revision: number }>("me", "round-visibility", { body: { id: roundId, visibility } });
+      store(next, res.revision);
+    }),
+  community: () => php<MyCommunity>("community", "my"),
+  async saveCommunity(input) {
+    const { doc } = await loadDoc();
+    await php("me", "community-save", { body: { settings: input, summary: summaryOf(doc) } });
+    await loadDoc(true);
+    return php<MyCommunity>("community", "my");
+  },
+  async saveAvatar(dataUrl) {
+    await php("me", "avatar-save", { body: { dataUrl } });
+    await loadDoc(true);
+    return php<MyCommunity>("community", "my");
+  },
+  async deleteAvatar() {
+    await php("me", "avatar-delete", { body: {} });
+    await loadDoc(true);
+    return php<MyCommunity>("community", "my");
+  },
+  myRanking: () => php("community", "my-ranking"),
   simulate: async (sd) => simulateDifferential((await loadDoc()).doc, sd),
   target: async (t) => targetAnalysis((await loadDoc()).doc, t),
   gbe: async (input) => gbeTool(input),
@@ -319,6 +366,43 @@ const admin: AdminApi = {
     }
     return { users: res.users, rounds: res.rounds, courses };
   },
+  async communityOverview() {
+    const res = await adminCall<Omit<AdminCommunityOverview, "performance" | "dataQuality"> & { sums: StatSums; withWarnings: number }>("community");
+    const { sums, withWarnings, ...rest } = res;
+    return {
+      ...rest,
+      performance: ratesFromSums(sums),
+      dataQuality: { roundsWithoutStats: sums.rounds - sums.detailedRounds, incompleteStats: sums.detailedRounds - sums.completeRounds, withWarnings },
+    };
+  },
+  communityRanking: (f) => adminCall("community-ranking", f),
+  communityRounds: (f) => adminCall("community-rounds", f),
+  moderateRound: async (userId, roundId, action, reason) => {
+    await adminCall("community-moderate", { userId, roundId, action, reason: reason ?? "" });
+  },
+  refreshRanking: () => adminCall("community-refresh"),
+  hideUserCommunity: async (userId, patch) => {
+    await adminCall("user-community", { id: userId, ...patch });
+  },
 };
 
-export const webspaceApi: HcpApi = { auth, member, admin };
+// ---------------------------------------------------------------------------
+// Community (nur Lesen; PHP filtert nach den Freigaben)
+// ---------------------------------------------------------------------------
+
+const cm = <T>(action: string, query: Record<string, string | number | null | undefined> = {}) => php<T>("community", action, {}, query);
+
+const community: CommunityApi = {
+  ranking: (p = {}) => cm("ranking", { scope: p.scope, page: p.page }),
+  members: (p = {}) => cm("members", { q: p.q, sort: p.sort, page: p.page }),
+  member: (id) => cm("member", { id }),
+  memberRounds: (id, page) => cm("member-rounds", { id, page }),
+  activity: (page) => cm("activity", { page }),
+  async round(id, roundId) {
+    const view = await cm<PublicRoundView>("round", { member: id, round: roundId });
+    // Hinweistexte aus der vom Server gelieferten Statistik (reine Formulierung, keine Berechnung)
+    return { ...view, insights: view.stats ? roundInsights(view.stats, { self: view.isMine }) : [] };
+  },
+};
+
+export const webspaceApi: HcpApi = { auth, member, community, admin };

@@ -38,6 +38,9 @@ const api = {
   me: EDITION === "webspace" ? "/api/me.php?action=load" : "/api/me",
   adminUsers: EDITION === "webspace" ? ["/api/admin.php?action=users", "POST"] : ["/api/admin/users", "GET"],
   roundGet: (id) => (EDITION === "webspace" ? null : `/api/me/rounds/${id}`),
+  activity: EDITION === "webspace" ? "/api/community.php?action=activity" : "/api/community/activity",
+  ranking: EDITION === "webspace" ? "/api/community.php?action=ranking" : "/api/community/ranking",
+  publicRound: (member, round) => (EDITION === "webspace" ? `/api/community.php?action=round&member=${member}&round=${round}` : `/api/community/rounds/${member}/${round}`),
 };
 
 async function call(page, url, method = "GET", body, csrf = true) {
@@ -259,7 +262,7 @@ async function waitPath(page, re, timeout = 15000) {
     }
     await u.getByRole("button", { name: "Weiter", exact: true }).click();
     await u.waitForSelector("text=Dein Ergebnis");
-    await u.waitForSelector("text=Score Differential", { timeout: 20000 });
+    await u.waitForSelector("text=/GBE \\d+/", { timeout: 20000 });
     const preview = await u.locator("text=Handicap Index").first().locator("xpath=../..").innerText();
     await u.getByRole("button", { name: "Runde speichern" }).click();
     await u.waitForSelector("text=Runde gespeichert", { timeout: 20000 });
@@ -351,7 +354,7 @@ async function waitPath(page, re, timeout = 15000) {
   await u.getByRole("button", { name: "Weiter", exact: true }).click();
   await u.fill("#gbe", "90");
   await u.getByRole("button", { name: "Weiter", exact: true }).click();
-  await u.waitForSelector("text=Score Differential", { timeout: 20000 });
+  await u.waitForSelector("text=/GBE \\d+/", { timeout: 20000 });
   // SD = 113/131 × (90 − 72,3) = 15,3 (Werte der Startdaten, nur zum Test)
   const confirmedPreview = await u.locator("main").innerText();
   check("Ungeprüftes Rating: Werte bestätigen statt abtippen", confirmBox && needsConfirm && confirmedPreview.includes("15,3"));
@@ -362,6 +365,102 @@ async function waitPath(page, re, timeout = 15000) {
   const nineHint = await visible(u.locator("text=Kein 9-Loch-Rating vorhanden"), 5000);
   await u.getByRole("radio", { name: "18 Loch", exact: true }).click();
   check("Löcher im Platz-Schritt umschaltbar (18 Loch / Loch 1–9 / Loch 10–18)", nineHint && (await visible(u.getByRole("radio", { name: /Gelb/ }).first(), 5000)));
+
+  // ---------------------------------------------------------------- L: Lochstatistik, Sichtbarkeit, Community (Version 2.2)
+  const heroBeforeStats = await (async () => {
+    await u.goto(`${BASE}/member/`);
+    await u.waitForSelector("text=Hallo Max!");
+    return u.locator("#hcp-hero-title").locator("xpath=../..").innerText();
+  })();
+  await u.goto(`${BASE}/member/rounds/new/`);
+  await u.waitForSelector("text=Wann hast du gespielt?");
+  await u.fill('input[aria-label="Spieldatum"]', "2026-06-20");
+  await u.click("text=Sonstige"); // Training: zählt nicht fürs Handicap – die bisherigen HCPI-Prüfungen bleiben gültig
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  await u.click("button:has-text('E2E Testclub (fiktiv)') >> nth=0");
+  await u.getByRole("radio", { name: /Gelb/ }).first().click();
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  await u.fill("#gbe", "89");
+  await u.getByRole("switch", { name: /Runde detailliert tracken/ }).check();
+  const group = (name) => u.getByRole("group", { name, exact: true });
+  await u.getByRole("button", { name: /^Par\s*\d+$/ }).click();
+  await group("Putts").getByRole("button", { name: "2", exact: true }).click();
+  await group("Fairway getroffen").getByRole("button", { name: "Ja" }).click();
+  await group("Grün in Regulation").getByRole("button", { name: "Ja" }).click();
+  await group("Strafschläge").getByRole("button", { name: "0", exact: true }).click();
+  await u.click("text=Private Notiz hinzufügen");
+  await u.fill("#note-1", "Geheime Lochnotiz");
+  const progress1 = await visible(u.locator("text=1 von 18 Löchern vollständig"), 5000);
+  await u.getByRole("button", { name: "Weiter zu Loch 2" }).click();
+  await u.getByRole("button", { name: /^Bogey\s*\d+$/ }).click();
+  await group("Putts").getByRole("button", { name: "3", exact: true }).click();
+  await group("Grün in Regulation").getByRole("button", { name: "Nein" }).click();
+  await group("Up & Down").getByRole("button", { name: "Nein" }).click();
+  await group("Strafschläge").getByRole("button", { name: "0", exact: true }).click();
+  await u.getByRole("button", { name: "Weiter zu Loch 3" }).click();
+  await u.getByRole("button", { name: /^Par\s*\d+$/ }).click();
+  await group("Putts").getByRole("button", { name: "5", exact: true }).click();
+  const impossible = await visible(u.locator("text=/Loch 3: 5 Putts passen nicht/").first(), 5000);
+  await group("Putts").getByRole("button", { name: "2", exact: true }).click();
+  check("L: Detaillierte Scorecard – Fortschritt, Lochnavigation, Prüfung am Loch", progress1 && impossible && (await u.getByRole("button", { name: "Loch 1: vollständig" }).isVisible()));
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  await u.waitForSelector("text=Deine Statistik", { timeout: 20000 });
+  await u.getByRole("radio", { name: /Alle Mitglieder – Details/ }).click();
+  const consentShown = await visible(u.locator("text=Deine Runden sind für andere Mitglieder noch nicht freigegeben"), 5000);
+  await u.getByRole("button", { name: "Profil, Runden und Statistik freigeben" }).click();
+  await u.waitForSelector("text=/Freigabe gespeichert/");
+  check("L: Sichtbarkeit beim Speichern – Freigabe nur mit ausdrücklicher Zustimmung", consentShown);
+  await u.getByRole("button", { name: "Runde speichern" }).click();
+  await u.waitForSelector("text=Runde gespeichert", { timeout: 20000 });
+  const statsSaved = await u.locator("main").innerText();
+  // SD = 113/135 × (89 − 71,8) = 14,40 → 14,4 – Statistik ändert daran nichts
+  check("L: Runde mit Statistik gespeichert, Score Differential unverändert (14,4)", statsSaved.includes("14,4") && statsSaved.includes("Deine Statistik"), statsSaved.replace(/\s+/g, " ").slice(0, 160));
+  await u.click("text=Ganze Statistik ansehen");
+  await u.waitForSelector("text=Statistik dieser Runde");
+  const statTab = await u.locator("main").innerText();
+  check("L: Rundendetail – Reiter Statistik (GIR 1 von 2 erfassten Grüns)", statTab.includes("1 von 2 Grüns") && statTab.includes("Drei-Putts"), statTab.replace(/\s+/g, " ").slice(0, 200));
+  await u.getByRole("radio", { name: "Scorekarte" }).click();
+  check("L: Rundendetail – Scorekarte mit privater Notiz", await visible(u.locator("text=Geheime Lochnotiz"), 5000));
+  const sharedRoundId = new URL(u.url()).searchParams.get("id");
+  await u.screenshot({ path: `${SHOTS}/24-round-scorecard.png`, fullPage: true });
+
+  // Statistiken nachträglich ergänzen (ältere Runde) – Handicap bleibt gleich
+  await u.goto(`${BASE}/member/rounds/stats/?id=${encodeURIComponent(roundId)}`);
+  await u.waitForSelector("text=/Statistik (ergänzen|bearbeiten)/");
+  const lockedScore = await visible(u.locator("text=Schläge (aus deinem Ergebnis)"), 5000);
+  await group("Putts").getByRole("button", { name: "2", exact: true }).click();
+  await group("Grün in Regulation").getByRole("button", { name: "Nein" }).click();
+  await group("Strafschläge").getByRole("button", { name: "0", exact: true }).click();
+  await u.getByRole("button", { name: "Statistik speichern" }).click();
+  await u.waitForSelector("text=/Statistik gespeichert/", { timeout: 20000 });
+  await u.goto(`${BASE}/member/`);
+  await u.waitForSelector("text=Hallo Max!");
+  const heroAfterStats = await u.locator("#hcp-hero-title").locator("xpath=../..").innerText();
+  check("L: Statistiken ergänzen – Schläge gesperrt (Loch für Loch), Handicap unverändert", lockedScore && heroAfterStats === heroBeforeStats, heroAfterStats.replace(/\s+/g, " ").slice(0, 80));
+  check("L: Dashboard – Statistik der letzten Runde", await visible(u.locator("text=Statistik der letzten Runde"), 5000));
+
+  // Statistikseite
+  await u.goto(`${BASE}/member/stats/`);
+  await u.waitForSelector("text=Putts pro Loch");
+  const statsPage = await u.locator("main").innerText();
+  check("L: Statistikseite mit Filtern, Kennzahlen und Verlauf", statsPage.includes("2 Runden") && statsPage.includes("Grüns und Fairways") && statsPage.includes("So zählen wir"), statsPage.replace(/\s+/g, " ").slice(0, 160));
+  await u.getByRole("radio", { name: "9 Loch" }).click();
+  check("L: Statistik-Filter 9 Loch (keine 9-Loch-Runde mit Statistik)", await visible(u.locator("text=Keine Runden für diese Auswahl"), 8000));
+  await u.screenshot({ path: `${SHOTS}/25-stats.png`, fullPage: true });
+
+  // Community: Ranking nur mit Zustimmung
+  await u.goto(`${BASE}/member/community/`);
+  await u.waitForSelector("text=Du nimmst nicht teil");
+  await u.getByRole("button", { name: "Am Ranking teilnehmen" }).click();
+  await u.getByRole("dialog").getByRole("button", { name: "Teilnehmen" }).click();
+  await u.waitForSelector("text=Deine Position");
+  const rankingPage = await u.locator("main").innerText();
+  check("L: Ranking – Teilnahme per Zustimmung, eigene Position hervorgehoben", rankingPage.includes("Platz 1") && rankingPage.includes("Du"), rankingPage.replace(/\s+/g, " ").slice(0, 160));
+  await u.screenshot({ path: `${SHOTS}/26-community-ranking.png`, fullPage: true });
+  await u.goto(`${BASE}/member/profile/?tab=community`);
+  await u.waitForSelector("text=Freigaben");
+  const settingsTab = await u.locator("main").innerText();
+  check("L: Profil → Community: Freigaben sichtbar, Notizen weiterhin privat", settingsTab.includes("Notizen teilen") && (await u.getByRole("checkbox", { name: /Notizen teilen/ }).isChecked()) === false);
 
   // HCP-Seite
   await u.goto(`${BASE}/member/hcp/`);
@@ -421,6 +520,45 @@ async function waitPath(page, re, timeout = 15000) {
     check("I: fremde Runde löschen → nicht gefunden", foreign.status === 404, `HTTP ${foreign.status}`);
   }
 
+  // ---------------------------------------------------------------- L: Community aus Sicht eines anderen Mitglieds
+  const act = await call(o, api.activity, "GET", undefined, false);
+  const items = act.json?.items ?? [];
+  const actJson = JSON.stringify(act.json ?? {});
+  check("L: Aktivität zeigt nur die freigegebene Runde", act.status === 200 && items.length === 1 && items[0].round.member.displayName === "Max M.", `HTTP ${act.status}, ${items.length} Einträge`);
+  check("L: keine E-Mail, keine interne ID in Community-Daten", !actJson.includes("max@example.de") && !actJson.includes('"userId"'));
+  const memberId = items[0]?.round.member.publicId ?? "x";
+  const pubRound = await call(o, api.publicRound(memberId, items[0]?.round.roundId ?? "x"), "GET", undefined, false);
+  check("L: geteilte Runde (Details) ohne private Notiz", pubRound.status === 200 && pubRound.json?.level === "FULL" && !JSON.stringify(pubRound.json).includes("Geheime Lochnotiz"), `HTTP ${pubRound.status}`);
+  const privRound = await call(o, api.publicRound(memberId, roundId), "GET", undefined, false);
+  check("L: private Runde eines anderen Mitglieds → nicht gefunden", privRound.status === 404, `HTTP ${privRound.status}`);
+  const rk = await call(o, api.ranking, "GET", undefined, false);
+  check("L: Ranking für andere – nur Teilnehmer, eigene hypothetische Position", rk.json?.total === 1 && rk.json?.me?.participating === false && rk.json?.me?.position === 2, JSON.stringify(rk.json?.me ?? null));
+  await o.goto(`${BASE}/member/community/?tab=aktivitaet`);
+  await o.waitForSelector("text=hat eine Runde gespielt");
+  await o.click("text=Ansehen");
+  await o.waitForSelector("text=Zusammenfassung");
+  await o.getByRole("radio", { name: "Scorekarte" }).click();
+  check("L: Mitglied öffnet geteilte Runde mit Scorekarte", await visible(o.locator("table").first(), 5000));
+  await o.screenshot({ path: `${SHOTS}/27-public-round.png`, fullPage: true });
+
+  // Moderation durch den Admin: ausblenden (Runde bleibt, Handicap unverändert), protokolliert
+  await admin.goto(`${BASE}/admin/community/?tab=rounds`);
+  await admin.waitForSelector("text=Max Muster");
+  await admin.getByRole("button", { name: "Ausblenden" }).first().click();
+  await admin.fill("#mod-reason", "E2E-Test");
+  await admin.getByRole("dialog").getByRole("button", { name: "Für andere ausblenden" }).click();
+  await admin.waitForSelector("text=Gespeichert und protokolliert.");
+  const actAfter = await call(o, api.activity, "GET", undefined, false);
+  check("L: Admin blendet Runde aus → für andere unsichtbar", (actAfter.json?.items ?? []).length === 0);
+  await u.goto(`${BASE}/member/rounds/view/?id=${encodeURIComponent(sharedRoundId)}`);
+  check("L: Mitglied sieht Hinweis zur Moderation, Runde bleibt", await visible(u.locator("text=Für andere Mitglieder ausgeblendet").first(), 8000));
+  await admin.goto(`${BASE}/admin/community/`);
+  await admin.waitForSelector("text=Im Ranking");
+  await admin.getByRole("button", { name: "Ranking aktualisieren" }).click();
+  await admin.waitForSelector("text=/Aktualisiert: \\d+ Mitglieder/", { timeout: 20000 });
+  check("G: Admin-Community – Übersicht und „Ranking aktualisieren“", true);
+  await admin.screenshot({ path: `${SHOTS}/12-admin-community.png`, fullPage: true });
+
   // ---------------------------------------------------------------- G: Admin sieht Benutzer, HCP, Runden, Logs
   await admin.goto(`${BASE}/admin/users/`);
   await admin.fill('input[aria-label="Benutzer suchen"]', "max");
@@ -435,6 +573,7 @@ async function waitPath(page, re, timeout = 15000) {
   const logs = await admin.locator("main").innerText();
   check("G: Audit-Log enthält Benutzeransicht und Datenzugriff", logs.includes("Benutzeransicht geöffnet") && logs.includes("Benutzerdaten angesehen"));
   check("G: Audit-Log enthält Runden der Mitglieder", logs.includes("Runde gespeichert"));
+  check("G: Audit-Log enthält Moderation, Lochstatistik und Community-Einstellungen", logs.includes("Öffentliche Runde verborgen") && logs.includes("Lochstatistik ergänzt") && logs.includes("Community-Einstellungen geändert"));
   await admin.goto(`${BASE}/admin/rounds/`);
   await admin.waitForSelector("text=Runden");
   check("G: Rundenübersicht aller Mitglieder", (await admin.locator("tbody tr").count()) >= 5);
@@ -504,6 +643,16 @@ async function waitPath(page, re, timeout = 15000) {
   await m.getByRole("radio", { name: /Loch für Loch/ }).click();
   await m.screenshot({ path: `${SHOTS}/31-mobile-scorecard.png` });
   check("J: Smartphone – Loch-für-Loch-Eingabe", await m.locator("text=Loch 1").first().isVisible());
+  await m.getByRole("switch", { name: /Runde detailliert tracken/ }).check();
+  await m.getByRole("group", { name: "Putts", exact: true }).getByRole("button", { name: "2", exact: true }).click();
+  const overflowCard = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await m.screenshot({ path: `${SHOTS}/32-mobile-detailed.png`, fullPage: true });
+  check("J: Smartphone – detaillierte Scorecard ohne horizontale Scrollleiste", overflowCard <= 1 && (await m.getByRole("progressbar").isVisible()), `${overflowCard}px`);
+  await m.goto(`${BASE}/member/community/`);
+  await m.waitForSelector("text=Deine Position");
+  const overflowCm = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  check("J: Smartphone – Community (Ranking als Karten)", overflowCm <= 1 && (await m.locator('nav[aria-label="Mitgliederbereich"]').last().locator("text=Community").isVisible()), `${overflowCm}px`);
+  await m.screenshot({ path: `${SHOTS}/33-mobile-community.png`, fullPage: true });
 
   // ---------------------------------------------------------------- K: Desktop
   await login(u, "max@example.de", "Max-Neu-Passwort-1");

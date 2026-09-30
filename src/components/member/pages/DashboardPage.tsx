@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, ClipboardList, Flag, Gauge, MapPinned } from "lucide-react";
+import { ArrowRight, BarChart3, ClipboardList, Flag, Gauge, MapPinned, Trophy, UsersRound } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useApi } from "@/lib/useApi";
 import { formatDate, formatDecimal, formatHcp } from "@/lib/format";
@@ -10,11 +10,67 @@ import { Alert, Card, CardBody, CardHeader, EmptyState } from "@/components/ui";
 import { ErrorState, PageSkeleton, useToast } from "@/components/ui/feedback";
 import { HcpHero } from "@/components/member/HcpHero";
 import { HcpHistoryChart } from "@/components/member/HcpHistoryChart";
-import { DraftList, roundHref } from "@/components/member/RoundList";
+import { DraftList, roundHref, roundStatsHref } from "@/components/member/RoundList";
+import { useSession } from "@/components/session/SessionProvider";
+import { Trend } from "@/components/community/CommunityViews";
+import { formatPercent } from "@/components/stats/StatsUi";
+import type { DashboardData } from "@/lib/api/types";
+
+function RankingCard({ ranking }: { ranking: NonNullable<DashboardData["ranking"]> }) {
+  return (
+    <Card>
+      <CardHeader title="Ranking" action={<Link href="/member/community" className="text-sm font-medium text-brand hover:underline">Community</Link>} />
+      <CardBody className="flex items-center gap-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          <Trophy className="h-6 w-6" aria-hidden />
+        </span>
+        {ranking.participating && ranking.position !== null ? (
+          <div>
+            <p className="tabular text-2xl font-semibold text-ink">
+              Platz {ranking.position} <span className="text-sm font-normal text-ink-3">von {ranking.total}</span>
+            </p>
+            <p className="flex items-center gap-2 text-sm text-ink-3">
+              <Trend value={ranking.trend} /> {ranking.trendSince ? `seit ${formatDate(ranking.trendSince)}` : "im Community-Ranking"}
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm font-medium text-ink">Du nimmst nicht am Ranking teil.</p>
+            <p className="text-sm text-ink-3">{ranking.position !== null ? `Du wärst auf Platz ${ranking.position} – das siehst nur du.` : "Teilnahme nur mit deiner Zustimmung."}</p>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function LastStatsCard({ last }: { last: NonNullable<DashboardData["lastStats"]> }) {
+  const s = last.stats;
+  return (
+    <Card>
+      <CardHeader title="Statistik der letzten Runde" subtitle={`${last.courseName} · ${formatDate(last.date)}`} action={<Link href="/member/stats" className="text-sm font-medium text-brand hover:underline">Alle Statistiken</Link>} />
+      <CardBody>
+        <Link href={`${roundHref(last.roundId)}&tab=stats`} className="grid grid-cols-3 gap-3 text-center">
+          {[
+            { label: "Putts", value: s.totalPutts ?? "–" },
+            { label: "GIR", value: formatPercent(s.girPercentage) },
+            { label: "Fairways", value: formatPercent(s.firPercentage) },
+          ].map((k) => (
+            <div key={k.label} className="rounded-xl bg-surface-2 py-2.5">
+              <p className="text-xs text-ink-3">{k.label}</p>
+              <p className="tabular text-lg font-semibold text-ink">{k.value}</p>
+            </div>
+          ))}
+        </Link>
+      </CardBody>
+    </Card>
+  );
+}
 
 export function DashboardPage() {
   const params = useSearchParams();
   const toast = useToast();
+  const { settings } = useSession();
   const { data, error, loading, reload, setData } = useApi(() => api.member.dashboard(), "dashboard");
 
   if (error && !data) return <ErrorState error={error} onRetry={reload} />;
@@ -93,14 +149,35 @@ export function DashboardPage() {
               <HcpHistoryChart history={hcp.history} height={170} />
             </CardBody>
           </Card>
+          {data.lastStats ? (
+            <LastStatsCard last={data.lastStats} />
+          ) : (
+            last && (
+              <Card>
+                <CardBody className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink">Noch keine Lochstatistik</p>
+                    <p className="text-sm text-ink-3">Ergänze Putts, Grüns und Fairways deiner letzten Runde.</p>
+                  </div>
+                  <Link href={roundStatsHref(last.id)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-soft px-4 text-sm font-semibold text-brand hover:bg-brand-soft-2">
+                    <BarChart3 className="h-4 w-4" aria-hidden /> Statistiken ergänzen
+                  </Link>
+                </CardBody>
+              </Card>
+            )
+          )}
+          {data.ranking && settings.community.rankingEnabled && <RankingCard ranking={data.ranking} />}
         </div>
       )}
 
-      <nav aria-label="Schnellzugriff" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <nav aria-label="Schnellzugriff" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { href: "/member/hcp", icon: Gauge, title: "Wie wird gerechnet?", text: hcp.calculationLabel },
           { href: "/member/rounds", icon: ClipboardList, title: "Meine Runden", text: "Alle Ergebnisse und was zählt" },
-          { href: "/member/courses", icon: MapPinned, title: "Golfplätze", text: "Favoriten und Heimatplatz" },
+          { href: "/member/stats", icon: BarChart3, title: "Statistik", text: "Putts, Grüns, Fairways" },
+          settings.community.communityEnabled
+            ? { href: "/member/community", icon: UsersRound, title: "Community", text: "Ranking und Mitglieder" }
+            : { href: "/member/courses", icon: MapPinned, title: "Golfplätze", text: "Favoriten und Heimatplatz" },
         ].map(({ href, icon: Icon, title, text }) => (
           <Link key={href} href={href} className="group flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 hover:border-border-strong">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand">

@@ -16,8 +16,9 @@ import { ConfirmDialog, PageSkeleton, PasswordInput, useToast } from "@/componen
 import { useFormErrors } from "@/components/auth/useFormErrors";
 import { useSession } from "@/components/session/SessionProvider";
 import type { Gender } from "@/lib/whs/types";
+import { CommunitySettingsCard } from "@/components/community/CommunitySettingsCard";
 
-type Tab = "konto" | "sicherheit" | "datenschutz";
+type Tab = "konto" | "community" | "sicherheit" | "datenschutz";
 
 function AccountSection() {
   const { user, setUser } = useSession();
@@ -257,9 +258,11 @@ function PrivacySection() {
 export function ProfilePage() {
   const params = useSearchParams();
   const router = useRouter();
-  const { logout } = useSession();
+  const { logout, settings } = useSession();
+  const communityOn = settings.community.communityEnabled;
+  const tabs: Tab[] = communityOn ? ["konto", "community", "sicherheit", "datenschutz"] : ["konto", "sicherheit", "datenschutz"];
   const initial = (params.get("tab") as Tab) || "konto";
-  const [tab, setTab] = useState<Tab>(["konto", "sicherheit", "datenschutz"].includes(initial) ? initial : "konto");
+  const [tab, setTab] = useState<Tab>(tabs.includes(initial) ? initial : "konto");
   return (
     <div className="space-y-5">
       <PageHeader title="Profil" />
@@ -268,11 +271,13 @@ export function ProfilePage() {
         value={tab}
         onChange={setTab}
         options={[
-          { value: "konto", label: "Konto" },
-          { value: "sicherheit", label: "Sicherheit" },
-          { value: "datenschutz", label: "Datenschutz" },
+          { value: "konto" as Tab, label: "Konto" },
+          ...(communityOn ? [{ value: "community" as Tab, label: "Community" }] : []),
+          { value: "sicherheit" as Tab, label: "Sicherheit" },
+          { value: "datenschutz" as Tab, label: "Datenschutz" },
         ]}
       />
+      {tab === "community" && communityOn && <CommunitySettingsCard />}
       {tab === "konto" && (
         <div className="space-y-5">
           <AccountSection />

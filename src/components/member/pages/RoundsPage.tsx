@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Flag, Plus, Upload } from "lucide-react";
+import { BarChart3, Flag, MapPinned, Plus, Upload } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useApi } from "@/lib/useApi";
 import { ButtonLink, EmptyState, PageHeader, Segmented } from "@/components/ui";
@@ -22,6 +22,12 @@ export function RoundsPage() {
         description="Alle erfassten Ergebnisse. Grün markierte Score Differentials zählen aktuell für deinen Handicap Index."
         actions={
           <>
+            <ButtonLink href="/member/stats" variant="secondary">
+              <BarChart3 className="h-4 w-4" aria-hidden /> Statistik
+            </ButtonLink>
+            <ButtonLink href="/member/courses" variant="secondary">
+              <MapPinned className="h-4 w-4" aria-hidden /> Golfplätze
+            </ButtonLink>
             <ButtonLink href="/member/import" variant="secondary">
               <Upload className="h-4 w-4" aria-hidden /> Importieren
             </ButtonLink>

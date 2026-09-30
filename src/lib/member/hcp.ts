@@ -11,9 +11,14 @@ import { hasBlockingIssue } from "@/lib/whs/roundCalculation";
 import { EXCLUSION_TEXTS, issueText } from "@/lib/whs/messages";
 import { nextSequence } from "@/lib/store/localStore";
 import { todayIso } from "@/lib/whs/dates";
-import type { HandicapRevision, Round, RoundComputedSnapshot, RoundResult, ScoringRecordResult } from "@/lib/whs/types";
+import { holeNumbersFor, validateHoleStats } from "@/lib/stats/holeStats";
+import { roundInsights } from "@/lib/stats/insights";
+import { hasStatistics, roundStatistics } from "@/lib/stats/roundStatistics";
+import type { RoundStatistics } from "@/lib/stats/types";
+import type { HandicapRevision, Round, RoundResult, ScoringRecordResult } from "@/lib/whs/types";
 import { activeRounds, withRound, type MemberDoc } from "./doc";
 import { engineLabel } from "./engine";
+import type { MemberComputed, MemberRound } from "./round";
 import { roundToInput } from "./roundInput";
 
 const fmt = (v: number) => v.toFixed(1).replace(".", ",");
@@ -177,17 +182,42 @@ export function listRounds(doc: Pick<MemberDoc, "profile" | "rounds">, filter: {
     .map((r) => toListItem(r, resultById.get(r.id)));
 }
 
+/** Statistik einer Runde aus ihren Lochdaten (null ohne Lochdaten). */
+export function statsOf(round: MemberRound): RoundStatistics | null {
+  return round.holeStats?.length ? roundStatistics(round.holeStats) : null;
+}
+
 export function roundDetail(doc: Pick<MemberDoc, "profile" | "rounds">, roundId: string): RoundDetail {
   const round = activeRounds(doc).find((r) => r.id === roundId);
   if (!round) throw apiError("ROUND_NOT_FOUND");
   const sr = scoringRecordOf(doc);
   const result = sr.rounds.find((r) => r.roundId === roundId);
   if (!result) throw apiError("ROUND_NOT_FOUND");
-  return { item: toListItem(round, result), round, input: roundToInput(round), result, recordLabelAtTime: usedLabel(result.recordSizeAtTime) };
+  const stats = statsOf(round);
+  return {
+    item: toListItem(round, result),
+    round,
+    input: roundToInput(round),
+    result,
+    recordLabelAtTime: usedLabel(result.recordSizeAtTime),
+    visibility: round.visibility ?? "PRIVATE",
+    holeStats: round.holeStats ?? null,
+    stats,
+    insights: stats ? roundInsights(stats) : [],
+    scoresLocked: round.entry.mode === "HOLE_BY_HOLE",
+    moderated: Boolean(round.moderation?.hidden),
+  };
+}
+
+/** Neueste Runde mit Lochstatistik (für die kleine Karte auf der Startseite). */
+export function lastStatsOf(doc: Pick<MemberDoc, "rounds">): DashboardData["lastStats"] {
+  const round = [...activeRounds(doc)].sort(byNewest).find((r) => hasStatistics(statsOf(r)));
+  if (!round) return null;
+  return { roundId: round.id, date: round.date, courseName: round.course.courseName, holes: round.holes, stats: statsOf(round)! };
 }
 
 export function dashboardData(doc: MemberDoc, firstName: string): DashboardData {
-  return { user: { firstName }, hcp: computeHcp(doc), roundsCount: activeRounds(doc).length, drafts: doc.drafts };
+  return { user: { firstName }, hcp: computeHcp(doc), roundsCount: activeRounds(doc).length, drafts: doc.drafts, lastStats: lastStatsOf(doc) };
 }
 
 /** Tagesreihenfolge: neue Runden ans Ende des Spieltags; bei Datumsänderung neu einsortieren. */
@@ -197,7 +227,7 @@ export function sequenceFor(doc: MemberDoc, round: Pick<Round, "id" | "date">): 
   return nextSequence(activeRounds(doc), round.date, round.id);
 }
 
-function snapshot(result: RoundResult, hcpBefore: number, hcpAfter: number): RoundComputedSnapshot {
+function snapshot(result: RoundResult, hcpBefore: number, hcpAfter: number, stats: RoundStatistics | null): MemberComputed {
   return {
     scoreDifferential: result.scoreDifferential?.value ?? null,
     adjustedGrossScore: result.scoreDifferential?.adjustedGrossScore ?? result.gbe?.total ?? null,
@@ -205,14 +235,26 @@ function snapshot(result: RoundResult, hcpBefore: number, hcpAfter: number): Rou
     handicapIndexAfter: hcpAfter,
     engine: engineLabel(),
     computedAt: new Date().toISOString(),
+    stats,
   };
+}
+
+/** Hinweise zur Lochstatistik (inkl. „Statistik entfällt“ beim Bearbeiten mit geänderten Löchern). */
+function statsWarningsFor(doc: MemberDoc, round: MemberRound): string[] {
+  const out: string[] = [];
+  if (round.holeStats?.length) {
+    out.push(...validateHoleStats(round.holeStats, holeNumbersFor(round.holes, round.rating.nine ?? null)).warnings.map((w) => w.message));
+  } else if (doc.rounds.find((r) => r.id === round.id)?.holeStats?.length) {
+    out.push("Die bisherige Lochstatistik passt nicht mehr zu den gespielten Löchern und wird beim Speichern entfernt.");
+  }
+  return out;
 }
 
 /**
  * Berechnet die Runde im Kontext des gesamten Scoring Records (vorher/nachher). Bei Änderungen an älteren
  * Runden wird der komplette Verlauf chronologisch neu bestimmt.
  */
-export function previewRound(doc: MemberDoc, round: Round): RoundPreview {
+export function previewRound(doc: MemberDoc, round: MemberRound): RoundPreview {
   const before = scoringRecordOf(doc).status.currentHandicapIndex;
   const nextDoc = withRound(doc, round);
   const sr = scoringRecordOf(nextDoc, round.date > todayIso() ? round.date : todayIso());
@@ -229,13 +271,15 @@ export function previewRound(doc: MemberDoc, round: Round): RoundPreview {
     changed: Math.abs(after - before) >= 0.05,
     issues: [...errors, ...warnings],
     blocking: hasBlockingIssue(result),
+    statsWarnings: statsWarningsFor(doc, round),
+    stats: statsOf(round),
   };
 }
 
 /** Speichert (neu oder geändert) und liefert das Ergebnis. Blockierende Fehler → ROUND_INVALID. */
-export function saveRound(doc: MemberDoc, round: Round): { doc: MemberDoc; preview: RoundPreview } {
+export function saveRound(doc: MemberDoc, round: MemberRound): { doc: MemberDoc; preview: RoundPreview } {
   const preview = previewRound(doc, round);
   if (preview.blocking) throw apiError("ROUND_INVALID", preview.issues[0] ?? undefined, { form: preview.issues.join(" ") });
-  const stored: Round = { ...round, computed: snapshot(preview.result, preview.hcpBefore, preview.hcpAfter) };
+  const stored: MemberRound = { ...round, computed: snapshot(preview.result, preview.hcpBefore, preview.hcpAfter, preview.stats) };
   return { doc: withRound(doc, stored), preview };
 }

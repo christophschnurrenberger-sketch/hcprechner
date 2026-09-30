@@ -67,7 +67,10 @@ golf-hcp-rechner/
 ├── api/
 │   ├── _lib.php                                  gemeinsame Funktionen: Sitzung, Rechte-Matrix, Speicher, Audit, Mail
 │   ├── auth.php                                  Anmeldung, Registrierung, E-Mail bestätigen, Passwort, Profil, Export, Konto löschen
-│   ├── me.php                                    eigene Daten des Mitglieds: laden, Runden, Entwürfe, Einstellungen, Import
+│   ├── me.php                                    eigene Daten des Mitglieds: laden, Runden, Entwürfe, Einstellungen, Import,
+│   │                                             Lochstatistik, Sichtbarkeit, Community-Einstellungen, Profilbild
+│   ├── community.php                             Community (nur lesen, nur freigegebene Daten): Ranking, Mitglieder, Profil, Runden, Aktivität, Profilbild
+│   ├── _community.php                            Projektion „was andere sehen“, Ranking, Indexdateien (Parität zu src/lib/community per Test)
 │   ├── admin.php                                 Admin: Benutzer, Runden, Audit-Log, System, Einstellungen, Suche, Golfplatz-Datensatz
 │   └── courses.php                               veröffentlichter Golfplatz-Datensatz (lesen)
 └── data/                                         Serverdaten (per .htaccess gesperrt, Dateien zusätzlich PHP-geschützt)
@@ -76,6 +79,8 @@ golf-hcp-rechner/
     ├── users.php                                 Konten (Passwort-Hashes, Rolle, Status, Token-Hashes)
     ├── userdata/<id>.php                         Profil, Runden, Entwürfe und Einstellungen je Mitglied (mit Revision)
     ├── courses.php, backups/                     Golfplatz-Datensatz, die letzten 10 Fassungen
+    ├── community/                                Indexdateien: profiles.php, rounds/<id>.php, feed.php, admin.php, ranking/<datum>.php
+    ├── avatars/<id>.php                          Profilbilder (nur über community.php abrufbar)
     ├── audit/<JJJJ-MM>.php                       Audit-Log
     ├── logs/                                     Fehler- und Mailprotokoll
     ├── mail-outbox/                              E-Mails im Modus „Ablage“ (Test ohne Mailserver)
@@ -105,6 +110,8 @@ golf-hcp-rechner/
 | Golfplatz-Admin | Server Actions | gleiche Formulare; Änderungen werden im Browser mit denselben Regeln (`src/lib/courses/dataset.ts`) angewendet und über `admin.php?action=courses-save` gespeichert; der Server setzt den Bearbeiter und protokolliert |
 | Gleichzeitige Änderungen | Transaktionen mit Zeilensperre | Revisionsnummer: veralteter Stand → HTTP 409, der Adapter lädt neu und wiederholt |
 | Detailseiten | `/admin/courses/<id>`, `/golfplaetze/<region>/<slug>` | `/admin/courses/view?id=`, `/golfplaetze/anlage/?slug=` |
+| Community, Ranking | Tabellen `community_profiles`, `public_rounds`, `ranking_snapshots`; Position per SQL | Indexdateien in `data/community/`; gleiche Projektion und gleiche Ranking-Regeln (Paritätstest) |
+| Ranking-Kennzahlen | vom Server berechnet | vom Browser mitgeschickt (`summary`), PHP prüft Wertebereiche – siehe Grenzen |
 | Bayern-Importer (Discovery) | `npm run import:bavaria` | nicht auf dem Webspace; Ergebnis als CSV importieren oder JSON-Export der Node-Edition einspielen |
 
 Warum rechnet der Browser? PHP kann die TypeScript-Engine nicht ausführen, und eine zweite Implementierung der WHS-Regeln
@@ -177,5 +184,9 @@ den Einstellungen, nie den Host-Header der Anfrage.
 - Mitgeliefert wird nur, was in `data/seed/` liegt (derzeit Ottobeuren, Ratings unverifiziert – siehe
   [`DATENSTATUS-BAYERN.md`](DATENSTATUS-BAYERN.md)); mit `npm run build:webspace -- --seed <export.json>` lässt sich
   ein geprüfter Datensatz mitliefern.
+- Ranking: Handicap Index, Rundenzahl und Spielleistung für Ranking und Profil berechnet der Browser mit derselben
+  Engine und schickt sie mit; PHP verwirft Werte außerhalb der gültigen Bereiche, rechnet aber nicht nach. Ein technisch
+  versiertes Mitglied könnte so den eigenen Ranking-Wert verfälschen (nie Daten anderer). Für ein manipulationssicheres
+  Ranking die Node-Edition verwenden; im Webspace kann der Admin Einträge jederzeit aus dem Ranking entfernen.
 - Sehr viele gleichzeitige Nutzer: Die Dateispeicherung ist für Vereinsgröße (einige hundert Mitglieder) ausgelegt;
   darüber die Node-Edition mit PostgreSQL verwenden.

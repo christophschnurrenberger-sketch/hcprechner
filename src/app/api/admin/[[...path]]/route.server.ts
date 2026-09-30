@@ -17,6 +17,12 @@
  * GET    /api/admin/settings | PUT                settings.write
  * POST   /api/admin/settings/mail-test            settings.write
  * GET    /api/admin/search?q                      admin.access
+ * GET    /api/admin/community                     community.read     Übersicht, aggregierte Statistik, Datenqualität
+ * GET    /api/admin/community/ranking?filter&q&page community.read   Ranking inkl. Nicht-Teilnehmern
+ * GET    /api/admin/community/rounds?filter&q&page  community.read   geteilte und verborgene Runden
+ * POST   /api/admin/community/moderate            community.moderate { userId, roundId, action, reason }
+ * POST   /api/admin/community/refresh             community.moderate Ranking neu berechnen
+ * PATCH  /api/admin/users/:id/community           community.moderate { rankingVisible?: false, profileVisible?: false }
  */
 import { count, desc, eq, gte } from "drizzle-orm";
 import { getDb, getDbHandle } from "@/db/client";
@@ -41,6 +47,9 @@ import { createMemberDoc, loadMemberDoc } from "@/server/members";
 import { hashPassword } from "@/server/security";
 import { requirePermission, roleOf } from "@/server/session";
 import { getSettings, mailInfo, saveSettings, siteUrl } from "@/server/settings";
+import { syncCommunitySafe } from "@/server/community";
+import { adminCommunityOverview, adminCommunityRanking, adminPublicRounds, hideUserCommunity, moderateRound, refreshRanking } from "@/server/communityAdmin";
+import type { CommunityFlags } from "@/lib/community/types";
 import { adminRow, allMemberDocs, countActiveSuperAdmins, createToken, listUsers, updateUser, userByEmail, userById } from "@/server/users";
 
 export const dynamic = "force-dynamic";
@@ -229,7 +238,14 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       }
       const updated = Object.keys(patch).length ? await updateUser(u.id, patch) : u;
       for (const [action, oldValue, newValue] of audits) await audit(action, actor, { userId: u.id, entityType: "user", entityId: u.id, oldValue, newValue });
+      if (patch.firstName !== undefined || patch.lastName !== undefined) await syncCommunitySafe(u.id);
       return json({ user: await adminRow(updated) });
+    }
+    if (a && b === "community" && method === "PATCH") {
+      const actor = await need("community.moderate");
+      const u = await target(a);
+      await hideUserCommunity(actor, u.id, await readJson(req, 2000));
+      return json(await userDetail(actor, await target(a)));
     }
     if (a && b === "password" && method === "POST") {
       const actor = await need("users.write");
@@ -375,10 +391,27 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
         }
       }
       for (const key of ["registrationOpen", "emailVerificationRequired"] as const) if (key in body) next[key] = Boolean(body[key]);
+      const communityChanges: Record<string, [boolean, boolean]> = {};
+      if (body.community && typeof body.community === "object") {
+        const incoming = body.community as Record<string, unknown>;
+        const flags: CommunityFlags = { ...old.community };
+        for (const key of Object.keys(flags) as (keyof CommunityFlags)[]) {
+          if (key in incoming && Boolean(incoming[key]) !== flags[key]) {
+            communityChanges[`community.${key}`] = [flags[key], Boolean(incoming[key])];
+            flags[key] = Boolean(incoming[key]);
+          }
+        }
+        next.community = flags;
+      }
       await saveSettings(next);
       const oldValue: Record<string, unknown> = {};
       const newValue: Record<string, unknown> = {};
+      for (const [key, [from, to]] of Object.entries(communityChanges)) {
+        oldValue[key] = from;
+        newValue[key] = to;
+      }
       for (const key of Object.keys(next) as (keyof typeof next)[]) {
+        if (key === "community") continue;
         if (old[key] !== next[key]) {
           const text = key === "imprintText" || key === "privacyText";
           oldValue[key] = text ? "(Text)" : old[key];
@@ -395,6 +428,36 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       const s = await getSettings();
       const ok = await sendMail(email.data, `Testnachricht von ${s.siteName}`, `Diese Testnachricht bestätigt, dass der E-Mail-Versand funktioniert.\n\n${siteUrl()}\n`);
       return json({ ok, mode: mailInfo().mode });
+    }
+  }
+
+  // ------------------------------------------------------------------ Community
+  if (head === "community") {
+    if (!a && method === "GET") {
+      await need("community.read");
+      return json(await adminCommunityOverview());
+    }
+    if (a === "ranking" && !b && method === "GET") {
+      await need("community.read");
+      const { page, pageSize } = pageParams(q);
+      return json(await adminCommunityRanking({ filter: q.get("filter"), q: q.get("q"), page, pageSize }));
+    }
+    if (a === "rounds" && !b && method === "GET") {
+      await need("community.read");
+      const { page, pageSize } = pageParams(q);
+      return json(await adminPublicRounds({ filter: q.get("filter"), q: q.get("q"), page, pageSize }));
+    }
+    if (a === "moderate" && !b && method === "POST") {
+      const actor = await need("community.moderate");
+      const body = await readJson(req, 4000);
+      const userId = str(body, "userId", 64);
+      if (!(await userById(userId))) throw apiError("NOT_FOUND", "Benutzer nicht gefunden");
+      await moderateRound(actor, userId, str(body, "roundId", 64), body.action, body.reason);
+      return json({ ok: true });
+    }
+    if (a === "refresh" && !b && method === "POST") {
+      const actor = await need("community.moderate");
+      return json(await refreshRanking(actor));
     }
   }
 

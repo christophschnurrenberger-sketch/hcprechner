@@ -16,6 +16,7 @@ import { useFormErrors } from "@/components/auth/useFormErrors";
 import { useSession } from "@/components/session/SessionProvider";
 import { HcpHistoryChart } from "@/components/member/HcpHistoryChart";
 import { AdminTable, AuditActionLabel, AuditValue, EmptyRow, Pagination, RoleBadge, StatusBadge, Td, Th, formatDateTime } from "../AdminUi";
+import { UserCommunityCard } from "./CommunityAdminPages";
 
 export const userHref = (id: string) => `/admin/users/view?id=${encodeURIComponent(id)}`;
 
@@ -566,7 +567,10 @@ export function UserDetailPage() {
           </Card>
           <ActivityCard userId={user.id} />
         </div>
-        <ManageCard user={user} onChange={reload} />
+        <div className="space-y-5">
+          <ManageCard user={user} onChange={reload} />
+          {user.community && <UserCommunityCard userId={user.id} community={user.community} onChange={reload} />}
+        </div>
       </div>
     </div>
   );

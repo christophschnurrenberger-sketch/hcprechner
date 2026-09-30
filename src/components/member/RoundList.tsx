@@ -10,6 +10,11 @@ export function roundHref(id: string): string {
   return `/member/rounds/view?id=${encodeURIComponent(id)}`;
 }
 
+/** „Statistiken ergänzen“ einer gespeicherten Runde. */
+export function roundStatsHref(id: string): string {
+  return `/member/rounds/stats?id=${encodeURIComponent(id)}`;
+}
+
 function StatusBadge({ item }: { item: RoundListItem }) {
   if (item.counted) return <Badge tone="good">zählt</Badge>;
   if (!item.relevant) return <Badge>nicht relevant</Badge>;

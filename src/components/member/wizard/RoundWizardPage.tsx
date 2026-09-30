@@ -8,6 +8,7 @@ import { fetchCourse } from "@/lib/courses/client";
 import type { CourseDto } from "@/lib/courses/types";
 import { todayIso } from "@/lib/whs/dates";
 import { useApi } from "@/lib/useApi";
+import { useSession } from "@/components/session/SessionProvider";
 import { Alert, ButtonLink } from "@/components/ui";
 import { ErrorState, PageSkeleton } from "@/components/ui/feedback";
 import { roundHref } from "@/components/member/RoundList";
@@ -22,7 +23,19 @@ interface Loaded {
 
 /** Gespeicherte Eingabe → Wizard (zum Bearbeiten). */
 function fromInput(input: RoundInput, base: WizardState): { state: WizardState; unsupported?: string } {
-  const s: WizardState = { ...base, step: "review", date: input.date, category: input.category, holes: input.holes, nine: input.nine ?? null, pcc: input.pcc ?? 0, notes: input.notes ?? "" };
+  const s: WizardState = {
+    ...base,
+    step: "review",
+    date: input.date,
+    category: input.category,
+    holes: input.holes,
+    nine: input.nine ?? null,
+    pcc: input.pcc ?? 0,
+    notes: input.notes ?? "",
+    visibility: input.visibility ?? "PRIVATE",
+    detailed: Boolean(input.holeStats?.length),
+    holeStats: input.holeStats ?? [],
+  };
   const c = input.course;
   if (c?.kind === "DB") Object.assign(s, { courseKind: "DB", courseId: c.courseId, layoutId: c.layoutId, teeColor: c.teeColor, gender: c.gender, ratingConfirmed: c.confirmRating ?? null });
   else if (c?.kind === "MANUAL")
@@ -47,10 +60,12 @@ export function RoundWizardPage() {
   const courseParam = params.get("course");
   const [draftId] = useState(() => draftParam ?? crypto.randomUUID());
   const lists = useApi(() => api.member.courseLists(), "lists");
+  const { settings } = useSession();
+  const communityOn = settings.community.communityEnabled;
 
   const loaded = useApi<Loaded>(async () => {
-    const profile = await api.member.profile();
-    const base = initialState(todayIso(), profile.profile.gender ?? "M");
+    const [profile, community] = await Promise.all([api.member.profile(), communityOn ? api.member.community().catch(() => null) : Promise.resolve(null)]);
+    const base = initialState(todayIso(), profile.profile.gender ?? "M", community?.settings.defaultRoundVisibility ?? "PRIVATE");
     if (editId) {
       const detail = await api.member.round(editId);
       const { state, unsupported } = fromInput(detail.input, base);

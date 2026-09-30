@@ -37,6 +37,15 @@ export const AUDIT_ACTIONS = {
   IMPORT_APPLIED: "Import übernommen",
   SETTINGS_CHANGED: "Einstellungen geändert",
   RULE_VERSION_CHANGED: "Regelversion geändert",
+  ROUND_VISIBILITY_CHANGED: "Sichtbarkeit einer Runde geändert",
+  ROUND_STATS_UPDATED: "Lochstatistik ergänzt",
+  COMMUNITY_SETTINGS_CHANGED: "Community-Einstellungen geändert",
+  PUBLIC_ROUND_MODIFIED: "Öffentliche Runde moderiert",
+  PUBLIC_ROUND_HIDDEN: "Öffentliche Runde verborgen",
+  PUBLIC_ROUND_UNHIDDEN: "Öffentliche Runde wieder sichtbar",
+  USER_RANKING_VISIBILITY_CHANGED: "Ranking-Sichtbarkeit geändert (Admin)",
+  USER_PROFILE_VISIBILITY_CHANGED: "Profil-Sichtbarkeit geändert (Admin)",
+  RANKING_REFRESHED: "Ranking aktualisiert",
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
@@ -70,10 +79,26 @@ export const ADMIN_ACTIONS: readonly string[] = [
   "IMPORT_APPLIED",
   "SETTINGS_CHANGED",
   "RULE_VERSION_CHANGED",
+  "PUBLIC_ROUND_MODIFIED",
+  "PUBLIC_ROUND_HIDDEN",
+  "PUBLIC_ROUND_UNHIDDEN",
+  "USER_RANKING_VISIBILITY_CHANGED",
+  "USER_PROFILE_VISIBILITY_CHANGED",
+  "RANKING_REFRESHED",
 ];
 
 /** Aktivitäten der Mitglieder (Dashboard „Letzte Aktivitäten“). */
-export const MEMBER_ACTIVITY: readonly string[] = ["USER_REGISTERED", "USER_EMAIL_VERIFIED", "ROUND_CREATED", "ROUND_MODIFIED", "ROUND_DELETED", "ROUNDS_IMPORTED"];
+export const MEMBER_ACTIVITY: readonly string[] = [
+  "USER_REGISTERED",
+  "USER_EMAIL_VERIFIED",
+  "ROUND_CREATED",
+  "ROUND_MODIFIED",
+  "ROUND_DELETED",
+  "ROUNDS_IMPORTED",
+  "ROUND_VISIBILITY_CHANGED",
+  "ROUND_STATS_UPDATED",
+  "COMMUNITY_SETTINGS_CHANGED",
+];
 
 /** Kurs-Änderungsprotokoll (Datensatz) → Audit-Aktion. */
 export function courseChangeToAudit(entityType: string, action: string): AuditAction {

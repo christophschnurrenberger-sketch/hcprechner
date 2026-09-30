@@ -4,6 +4,8 @@
  */
 import { apiError } from "@/lib/api/errors";
 import type { AdminRoundDetail, AdminUserDetail, AdminUserRow } from "@/lib/api/types";
+import { effectiveDisplayName, normalizeSettings } from "@/lib/community/policy";
+import { statsOf } from "./hcp";
 import { activeRounds, type MemberDoc } from "./doc";
 import { computeHcp, listRounds, scoringRecordOf, toListItem } from "./hcp";
 import { engineLabel } from "./engine";
@@ -20,6 +22,13 @@ export function adminUserDetail(row: AdminUserRow & { mustChangePassword: boolea
     lastRoundDate,
     profile: doc.profile,
     allRounds: listRounds(doc),
+    community: {
+      settings: normalizeSettings(doc.community),
+      displayName: effectiveDisplayName(doc.community, row),
+      publicRounds: rounds.filter((r) => (r.visibility ?? "PRIVATE") !== "PRIVATE").length,
+      hiddenRounds: rounds.filter((r) => r.moderation?.hidden).length,
+      detailedRounds: rounds.filter((r) => statsOf(r)).length,
+    },
   };
 }
 
@@ -35,5 +44,8 @@ export function adminRoundDetail(user: AdminRoundDetail["user"], doc: MemberDoc,
     item: result ? toListItem(round, result) : null,
     engine: engineLabel(),
     computedAt: new Date().toISOString(),
+    stats: statsOf(round),
+    visibility: round.visibility ?? "PRIVATE",
+    moderation: round.moderation ?? null,
   };
 }

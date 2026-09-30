@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { appSettings } from "@/db/schema";
 import type { AdminSettings, PublicSettings } from "@/lib/api/types";
+import { DEFAULT_FLAGS } from "@/lib/community/policy";
 
 export interface SiteSettings extends PublicSettings {
   mailFrom: string | null;
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   privacyText: null,
   contactEmail: null,
   mailFrom: null,
+  community: DEFAULT_FLAGS,
 };
 
 export async function getSettings(): Promise<SiteSettings> {
@@ -29,6 +31,7 @@ export async function getSettings(): Promise<SiteSettings> {
   for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof SiteSettings)[]) {
     if (stored[key] !== undefined) (out as Record<string, unknown>)[key] = stored[key];
   }
+  out.community = { ...DEFAULT_FLAGS, ...(stored.community ?? {}) };
   return out;
 }
 

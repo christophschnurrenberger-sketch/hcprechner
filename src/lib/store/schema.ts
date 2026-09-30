@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { holeStatSchema } from "@/lib/stats/holeStats";
 import type { PlayerProfile, Round } from "@/lib/whs/types";
 
 /** Validierung für JSON-Import und Synchronisation (tolerant, aber strukturgeprüft). */
@@ -19,6 +20,7 @@ const ratingSnapshot = z.object({
   validFrom: z.string().nullable().optional(),
   validTo: z.string().nullable().optional(),
   manual: z.boolean().optional(),
+  playerConfirmed: z.boolean().optional(),
 });
 
 const holeScore = z.union([z.number(), z.literal("PICKUP"), z.null()]);
@@ -78,9 +80,17 @@ export const roundSchema = z.object({
       handicapIndexAfter: z.number(),
       engine: z.string(),
       computedAt: z.string(),
+      /** Golfstatistik der Runde (aus den Lochdaten; unabhängig vom Handicap) */
+      stats: z.record(z.string(), z.union([z.number(), z.boolean(), z.null()])).nullable().optional(),
     })
     .nullable()
     .optional(),
+  /** Mitgliederbereich: Sichtbarkeit für andere Mitglieder (Standard: privat) */
+  visibility: z.enum(["PRIVATE", "MEMBERS_BASIC", "MEMBERS_FULL"]).optional(),
+  /** Lochstatistik (Putts, GIR, FIR …) – Spielleistung, fließt nicht ins Handicap ein */
+  holeStats: z.array(holeStatSchema).optional(),
+  /** Moderation durch den Admin */
+  moderation: z.object({ hidden: z.boolean(), reason: z.string().nullable(), at: z.string(), by: z.string().nullable() }).nullable().optional(),
 });
 
 export const profileSchema = z.object({

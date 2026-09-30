@@ -406,6 +406,7 @@ switch ($action) {
             hcp_send_verification($config, $target, $token);
         }
         hcp_audit('USER_PROFILE_UPDATED', $user, ['userId' => $user['id'], 'entityType' => 'user', 'entityId' => $user['id'], 'oldValue' => $old, 'newValue' => ['firstName' => $firstName, 'lastName' => $lastName, 'email' => $email]]);
+        hcp_cm_reindex($user['id']);
         hcp_json(['user' => hcp_session_view($config, $user), 'pendingEmail' => $user['pendingEmail'] ?? null]);
         break;
 
@@ -443,6 +444,7 @@ switch ($action) {
             }));
         });
         @unlink(hcp_member_file($user['id']));
+        hcp_cm_remove_user($user['id']);
         hcp_audit('USER_DELETED', $user, ['userId' => $user['id'], 'entityType' => 'user', 'entityId' => $user['id'], 'oldValue' => ['email' => $user['email'], 'name' => trim($user['firstName'] . ' ' . $user['lastName']), 'rounds' => $rounds, 'selfService' => true]]);
         hcp_clear_session($config);
         hcp_json(['ok' => true]);

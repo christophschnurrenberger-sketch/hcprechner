@@ -3,7 +3,10 @@
  * Hier wird nur die Eingabe zusammengestellt und auf Vollständigkeit geprüft – berechnet wird im Backend.
  */
 import type { ConfirmedRating, RoundInput } from "@/lib/api/types";
+import type { RoundVisibility } from "@/lib/community/types";
 import { parseDecimal } from "@/lib/courses/csv";
+import { hasAnyStat, validateHoleStats } from "@/lib/stats/holeStats";
+import type { HoleStat } from "@/lib/stats/types";
 import type { Gender, HoleScore, NineSide, PccValue, RoundCategory } from "@/lib/whs/types";
 
 export type Step = "basics" | "course" | "score" | "review";
@@ -44,9 +47,14 @@ export interface WizardState {
   stableford: string;
   pcc: PccValue;
   notes: string;
+  /** „Runde detailliert tracken“: Lochstatistik (Putts, GIR, FIR …) – ändert das Handicap nicht */
+  detailed: boolean;
+  holeStats: HoleStat[];
+  /** Wer darf die Runde sehen? (Vorauswahl aus den Privatsphäre-Einstellungen) */
+  visibility: RoundVisibility;
 }
 
-export function initialState(today: string, gender: Gender = "M"): WizardState {
+export function initialState(today: string, gender: Gender = "M", visibility: RoundVisibility = "PRIVATE"): WizardState {
   return {
     step: "basics",
     date: today,
@@ -67,6 +75,9 @@ export function initialState(today: string, gender: Gender = "M"): WizardState {
     stableford: "",
     pcc: 0,
     notes: "",
+    detailed: false,
+    holeStats: [],
+    visibility,
   };
 }
 
@@ -79,7 +90,15 @@ export function restoreState(raw: unknown, fallback: WizardState): WizardState {
     ...w,
     manual: { ...fallback.manual, ...(w.manual ?? {}) },
     strokes: Array.isArray(w.strokes) ? w.strokes : [],
+    holeStats: Array.isArray(w.holeStats) ? w.holeStats : [],
+    detailed: w.detailed === true,
   };
+}
+
+/** Lochstatistik mit den Schlägen der Loch-für-Loch-Eingabe (die fürs Handicap zählen). */
+export function statsWithStrokes(s: Pick<WizardState, "holeStats" | "scoreMode" | "strokes">): HoleStat[] {
+  if (s.scoreMode !== "HOLES") return s.holeStats;
+  return s.holeStats.map((h, i) => ({ ...h, score: typeof s.strokes[i] === "number" ? (s.strokes[i] as number) : null }));
 }
 
 /** Felder, deren Änderung eine Bestätigung des Ratings ungültig macht (anderer Abschlag, andere Löcher …). */
@@ -145,6 +164,11 @@ export function stepErrors(s: WizardState, step: Step): StepErrors {
       const p = int(s.stableford);
       if (p === null || !Number.isInteger(p) || p < 0 || p > 120) e.stableford = "Bitte deine Stableford-Punkte eingeben.";
     }
+    if (s.detailed && s.holeStats.length > 0) {
+      const stats = statsWithStrokes(s);
+      const v = validateHoleStats(stats, stats.map((h) => h.number));
+      if (v.errors.length > 0) e.stats = v.errors[0].message;
+    }
   }
   return e;
 }
@@ -179,6 +203,9 @@ export function toRoundInput(s: WizardState): RoundInput {
     score,
     pcc: s.pcc,
     notes: s.notes.trim() || undefined,
+    visibility: s.visibility,
+    // null entfernt eine bisherige Statistik ausdrücklich (Schalter aus)
+    holeStats: s.detailed && s.holeStats.some((h) => hasAnyStat(h)) ? statsWithStrokes(s) : null,
   };
 }
 

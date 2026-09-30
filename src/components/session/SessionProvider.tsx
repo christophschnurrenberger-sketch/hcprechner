@@ -6,6 +6,7 @@ import { api, type MeResponse } from "@/lib/api/client";
 import { onSessionLost } from "@/lib/api/transport";
 import type { PublicSettings, SessionUser } from "@/lib/api/types";
 import type { Permission } from "@/lib/auth/permissions";
+import { DEFAULT_FLAGS } from "@/lib/community/policy";
 
 const DEFAULT_SETTINGS: PublicSettings = {
   siteName: "Golf HCP Rechner",
@@ -14,6 +15,7 @@ const DEFAULT_SETTINGS: PublicSettings = {
   imprintText: null,
   privacyText: null,
   contactEmail: null,
+  community: DEFAULT_FLAGS,
 };
 
 interface SessionState {
@@ -50,7 +52,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const res = await api.auth.me();
-      setState({ status: "ready", user: res.user, settings: res.settings ?? DEFAULT_SETTINGS, installed: res.installed, appVersion: res.appVersion ?? null, error: null });
+      setState({ status: "ready", user: res.user, settings: { ...DEFAULT_SETTINGS, ...res.settings, community: { ...DEFAULT_FLAGS, ...(res.settings?.community ?? {}) } }, installed: res.installed, appVersion: res.appVersion ?? null, error: null });
       return res;
     } catch (error) {
       setState((s) => ({ ...s, status: "error", error: error instanceof Error ? error.message : "Fehler" }));

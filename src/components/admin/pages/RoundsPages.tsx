@@ -13,6 +13,9 @@ import { ErrorState, PageSkeleton } from "@/components/ui/feedback";
 import { CalculationDetails } from "@/components/member/pages/RoundDetailPage";
 import { AdminTable, EmptyRow, Pagination, Td, Th, formatDateTime } from "../AdminUi";
 import { userHref } from "./UsersPages";
+import { AdminRoundCommunity } from "./CommunityAdminPages";
+import { Scorecard } from "@/components/stats/Scorecard";
+import { RoundStatsSummary } from "@/components/stats/StatsUi";
 
 export const adminRoundHref = (userId: string, roundId: string) => `/admin/rounds/view?user=${encodeURIComponent(userId)}&id=${encodeURIComponent(roundId)}`;
 
@@ -154,6 +157,23 @@ export function RoundAdminDetailPage() {
           </CardBody>
         </Card>
       </div>
+      <AdminRoundCommunity
+        userId={data.user.id}
+        roundId={round.id}
+        visibility={data.visibility}
+        moderation={data.moderation}
+        hasNotes={Boolean(round.notes) || Boolean(round.holeStats?.some((h) => h.note))}
+        onChange={reload}
+      />
+      {data.stats && (
+        <Card>
+          <CardHeader title="Lochstatistik" subtitle="Spielleistung – ohne Einfluss auf das Handicap" />
+          <CardBody className="space-y-5">
+            <RoundStatsSummary stats={data.stats} insights={[]} />
+            {round.holeStats && <Scorecard holes={round.holeStats} showNotes />}
+          </CardBody>
+        </Card>
+      )}
       {result && (
         <Card>
           <CardHeader title="Rechenweg" />

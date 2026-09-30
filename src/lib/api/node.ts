@@ -1,7 +1,7 @@
 /**
  * API-Adapter der Node-Edition: reine HTTP-Aufrufe – berechnet wird auf dem Server.
  */
-import type { AdminApi, AuthApi, HcpApi, MemberApi } from "./client";
+import type { AdminApi, AuthApi, CommunityApi, HcpApi, MemberApi } from "./client";
 import { qs, request, setCsrf } from "./transport";
 
 const auth: AuthApi = {
@@ -71,7 +71,17 @@ const member: MemberApi = {
   },
   importPreview: (csv) => request("/api/me/import/preview", { body: { csv } }),
   importRounds: (csv) => request("/api/me/import", { body: { csv } }),
-  statistics: () => request("/api/me/statistics"),
+  statistics: () => request("/api/me/tools/statistics"),
+  performance: (f = {}) => request(`/api/me/statistics${qs({ last: f.last ?? null, holes: f.holes ?? null, courseId: f.courseId ?? null, teeColor: f.teeColor ?? null, period: f.period ?? null })}`),
+  saveRoundStats: (id, holeStats) => request(`/api/me/rounds/${encodeURIComponent(id)}/stats`, { method: "PUT", body: { holeStats } }),
+  setRoundVisibility: async (id, visibility) => {
+    await request(`/api/me/rounds/${encodeURIComponent(id)}/visibility`, { method: "PATCH", body: { visibility } });
+  },
+  community: () => request("/api/me/community"),
+  saveCommunity: (input) => request("/api/me/community", { method: "PATCH", body: input }),
+  saveAvatar: (dataUrl) => request("/api/me/avatar", { method: "PUT", body: { dataUrl } }),
+  deleteAvatar: () => request("/api/me/avatar", { method: "DELETE", body: {} }),
+  myRanking: () => request("/api/me/ranking"),
   simulate: (scoreDifferential) => request("/api/me/tools/simulate", { body: { scoreDifferential } }),
   target: (target) => request("/api/me/tools/target", { body: { target } }),
   gbe: (input) => request("/api/me/tools/gbe", { body: input }),
@@ -97,6 +107,25 @@ const admin: AdminApi = {
   saveSettings: (input) => request("/api/admin/settings", { method: "PUT", body: input }),
   mailTest: (to) => request("/api/admin/settings/mail-test", { body: { to } }),
   search: (q) => request(`/api/admin/search${qs({ q })}`),
+  communityOverview: () => request("/api/admin/community"),
+  communityRanking: (f) => request(`/api/admin/community/ranking${qs({ ...f })}`),
+  communityRounds: (f) => request(`/api/admin/community/rounds${qs({ ...f })}`),
+  moderateRound: async (userId, roundId, action, reason) => {
+    await request("/api/admin/community/moderate", { body: { userId, roundId, action, reason: reason ?? null } });
+  },
+  refreshRanking: () => request("/api/admin/community/refresh", { body: {} }),
+  hideUserCommunity: async (userId, patch) => {
+    await request(`/api/admin/users/${encodeURIComponent(userId)}/community`, { method: "PATCH", body: patch });
+  },
 };
 
-export const nodeApi: HcpApi = { auth, member, admin };
+const community: CommunityApi = {
+  ranking: (p = {}) => request(`/api/community/ranking${qs({ scope: p.scope ?? null, page: p.page ?? null })}`),
+  members: (p = {}) => request(`/api/community/members${qs({ q: p.q ?? null, sort: p.sort ?? null, page: p.page ?? null })}`),
+  member: (id) => request(`/api/community/members/${encodeURIComponent(id)}`),
+  memberRounds: (id, page) => request(`/api/community/members/${encodeURIComponent(id)}/rounds${qs({ page: page ?? null })}`),
+  activity: (page) => request(`/api/community/activity${qs({ page: page ?? null })}`),
+  round: (id, roundId) => request(`/api/community/rounds/${encodeURIComponent(id)}/${encodeURIComponent(roundId)}`),
+};
+
+export const nodeApi: HcpApi = { auth, member, community, admin };

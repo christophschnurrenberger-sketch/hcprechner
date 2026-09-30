@@ -1,7 +1,51 @@
 # Abschluss-Check
 
-Stand: 30.09.2026 · Version 2.1.0 · **369 automatisierte Tests** (231 WHS-Engine, 46 Rechte/Sicherheit/Service-Schicht
-inkl. PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
+Stand: 30.09.2026 · Version 2.2.0 · **427 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
+Statistik, Community, Parität TypeScript ↔ PHP, Node-API mit PGlite und PHP-API gegen `php -S`), ESLint und TypeScript
+ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
+
+## Version 2.2 – Community, Ranking, Mitgliederprofile und Lochstatistik (Master-Prompt, Checkliste §172)
+
+Browser-Abläufe (`e2e/flows.cjs`, Abschnitt L und Ergänzungen in G/J) gegen beide Editionen:
+**Node 87/87** (Standalone, PGlite) und **Webspace 86/86** (ZIP 2.2.0 installiert auf einem IONOS-ähnlichen Apache
+mit PHP-FPM, Unterordner `/hcprechner`). Konzept und Definitionen: [`COMMUNITY.md`](COMMUNITY.md).
+
+| Punkt | Status | Umsetzung / Nachweis |
+|---|---|---|
+| WHS unverändert, Engine nicht dupliziert | ✅ | Statistik und Community in eigenen Domänen (`src/lib/stats`, `src/lib/community`); `saveRoundStats` ändert nur `holeStats`/`computed.stats`; E2E „Statistiken ergänzen – Handicap unverändert“, SD der Statistik-Runde 14,4; alle 231 Engine-Tests grün |
+| Drei getrennte Domänen WHS / Statistik / Social | ✅ | `docs/COMMUNITY.md`, `docs/ARCHITEKTUR.md` |
+| Navigation Home / HCP / Runden / Community / Profil | ✅ | `MemberShell`; bei ausgeschalteter Community wieder „Golfplätze“; Statistik und Golfplätze im Benutzermenü und auf „Runden“ |
+| Quick Score Standard, „Runde detailliert tracken“ optional | ✅ | Schalter im Schritt „Ergebnis“; ohne Schalter wird keine Statistik gesendet (`tests/member/wizard.test.ts`) |
+| Mobile Scorecard: ein Loch pro Ansicht, Navigation ✓/●/○, Fortschritt, Autosave | ✅ | `DetailedHoleInput`; Entwurf speichert Lochdaten mit; E2E J ohne horizontale Scrollleiste (390 px) |
+| Putts, GIR, FIR (nur Par 4/5), Bunker/Bunkerschläge, Sand Save, Up & Down, Strafschläge, Notiz | ✅ | `HoleStat`, Prüfung am Loch (`validateHoleStats`): unmögliche Angaben blockieren, ungewöhnliche sind Hinweise; nichts wird aus der Schlagzahl abgeleitet |
+| Loch für Loch: Schläge aus der WHS-Eingabe, Par/Handicap aus Platzdaten | ✅ | `alignHoleStats` (Backend), `statsWithStrokes` (Assistent); Statistik-Editor sperrt die Schlagzahl |
+| „Statistiken ergänzen“ später, ohne SD/HCP zu ändern | ✅ | `/member/rounds/stats?id=`; Hinweis nach dem Speichern „Möchtest du diese Runde detailliert tracken?“ |
+| Statistik im Backend aggregiert, konsistente Definitionen | ✅ | Nenner = erfasste Löcher, `null` statt 0 % ohne Versuch, Summen statt Durchschnitt von Prozenten (`tests/stats`) |
+| `/member/stats` mit Filtern (5/10/20/Alle, 9/18, Platz, Zeitraum, Abschlag), Kennzahlen, Verläufe, Fakten | ✅ | Diagramme mit validierter Palette, Tabellenansicht, „So zählen wir“ |
+| Rundendetail: Zusammenfassung / Scorekarte / Statistik | ✅ | E2E „Reiter Statistik“, „Scorekarte mit privater Notiz“ |
+| Dashboard: Statistik der letzten Runde, Ranking-Position | ✅ | `LastStatsCard`, `RankingCard` |
+| `/member/community`: Ranking / Aktivität / Mitglieder | ✅ | Top 3, Tabelle (Desktop) bzw. Karten (Smartphone), Trend, Filter Gesamt/Heimatclub/Region, Suche mit Verzögerung |
+| Ranking nur Opt-in, niedrigster HCPI zuerst, Gleichstand 1-1-3 zentral konfigurierbar | ✅ | `COMMUNITY_POLICY.ranking`; Zustimmungsdialog; E2E: anderes Mitglied sieht nur Teilnehmer, eigene hypothetische Position 2 |
+| Eigene Position hervorgehoben, Trend über Tagesstände | ✅ | `ranking_snapshots` bzw. `data/community/ranking/`; „Ranking aktualisieren“ im Admin-Bereich |
+| Privatsphäre: rankingVisible, profileVisible, roundsVisible, statsVisible, notesVisible – alles Opt-in | ✅ | Standard aus; Abhängigkeiten `normalizeSettings`; Profil → Community |
+| Sichtbarkeit je Runde PRIVATE / MEMBERS_BASIC / MEMBERS_FULL, Freigabe ausdrücklich | ✅ | Frage beim Prüfen mit Zustimmungs-Schaltfläche; änderbar im Rundendetail; Vorauswahl aus den Einstellungen |
+| Notizen standardmäßig privat | ✅ | nur bei FULL + `notesVisible`; E2E „geteilte Runde ohne private Notiz“ |
+| Anzeigename und optionales Profilbild – nie E-Mail oder interne ID | ✅ | Anzeigename ohne @/Links; Bild im Browser verkleinert, serverseitig geprüft (Magic Bytes, 150 KB), nur über geschützte API; E2E „keine E-Mail, keine interne ID“ |
+| Backend filtert private Runden – nicht das Frontend | ✅ | Projektion als einzige Freigabestelle; E2E „private Runde eines anderen Mitglieds → 404“; `tests/community/node-community.test.ts` |
+| Admin umgeht Privatsphäre nicht stillschweigend | ✅ | Admin kann Freigaben nur ausschalten und Runden ausblenden, nie einschalten; jede Aktion mit Begründung im Audit-Log |
+| Admin: Übersicht, Ranking (Opt-in/Opt-out), geteilte Runden mit Moderation, aggregierte Statistik, Datenqualität | ✅ | `/admin/community`; Aggregate erst ab 5 Runden; Status und Ausblenden in der Benutzeransicht; Moderation in der Admin-Rundenansicht |
+| Schalter communityEnabled / rankingEnabled / publicRoundsEnabled / statsSharingEnabled / activityFeedEnabled | ✅ | Admin → Einstellungen → Community (Audit `community.*`); wirken beim Lesen zusätzlich zu den Einstellungen der Mitglieder |
+| Audit PUBLIC_ROUND_MODIFIED/HIDDEN, USER_RANKING/PROFILE_VISIBILITY_CHANGED | ✅ | plus `PUBLIC_ROUND_UNHIDDEN`, `RANKING_REFRESHED`, `COMMUNITY_SETTINGS_CHANGED`, `ROUND_VISIBILITY_CHANGED`, `ROUND_STATS_UPDATED`; E2E G prüft das Audit-Log |
+| APIs (§111) | ✅ | `docs/openapi.yaml` (65 Pfade): `/api/community/*`, `/api/me/{statistics,community,avatar,ranking}`, `/api/me/rounds/:id/{stats,visibility}`, `/api/admin/community/*` |
+| Beide Editionen gleichwertig | ✅ | PHP-Fassung der Projektion (`_community.php`) per Paritätstest identisch zu TypeScript (`tests/community/php-parity.test.ts`) |
+| Performantes Ranking | ✅ | Node: SQL `rank()` auf materialisierter Tabelle mit Indizes; Webspace: eine Indexdatei statt aller Mitglieder-Dokumente |
+
+**Bewusste Grenze (Webspace):** HCPI und Spielleistung fürs Ranking berechnet dort der Browser mit derselben Engine;
+PHP prüft nur die Wertebereiche. Ein manipuliertes Frontend könnte den eigenen Ranking-Wert verfälschen, nie Daten
+anderer. Manipulationssicher ist das Ranking in der Node-Edition; im Webspace kann der Admin Einträge entfernen.
+
+**Änderung der API:** `GET /api/me/statistics` liefert seit 2.2 die Golfstatistik; die WHS-Auswertung der Score
+Differentials liegt jetzt unter `GET /api/me/tools/statistics` (Oberfläche angepasst).
 
 ## Version 2 – Frontend mit Mitgliederbereich und Admin-Backend (Master-Prompt)
 
@@ -62,7 +106,7 @@ Ergebnis: **Webspace 63/63, Node 64/64 Prüfungen** (Stand 2.1.0) (Node zusätzl
 | Lade-, Leer- und Fehlerzustände (Skeleton, Retry), Toasts, Bestätigungsdialoge | ✅ |
 | Barrierefreiheit: Labels, `aria-live`, Fokus, Tastatur, `prefers-reduced-motion`, Kontrast (hell/dunkel) | ✅ |
 | Deutsche Formate (Komma, Datum), strukturierte Fehlermeldungen mit Feldbezug | ✅ |
-| OpenAPI-Dokumentation | ✅ `docs/openapi.yaml` (45 Pfade) |
+| OpenAPI-Dokumentation | ✅ `docs/openapi.yaml` (45 Pfade in 2.0; 65 seit 2.2) |
 
 ### Bewusste Abweichungen
 

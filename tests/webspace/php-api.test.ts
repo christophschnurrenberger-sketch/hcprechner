@@ -208,6 +208,45 @@ describe.skipIf(!hasPhp)("Webspace-Backend (PHP)", () => {
     expect(self.json?.error).toBe("CONFLICT");
   });
 
+  it("Community: nur freigegebene Daten, private Runden verborgen, Moderation vom Mitglied nicht aufhebbar", async () => {
+    const summary = { handicapIndex: 18.7, lowHandicapIndex: null, roundsCount: 2, lastRoundDate: "2026-06-02", performance: { rounds: 1, girPercentage: 50, distribution: { eagles: 0, birdies: 1, pars: 3, bogeys: 5, doubleBogeys: 0, triplePlus: 0 } }, computedAt: "2026-06-02T10:00:00Z" };
+    expect((await max.req("/api/me.php?action=community-save", { body: { settings: { rankingVisible: true, profileVisible: true, roundsVisible: true, statsVisible: true, displayName: "Max M." }, summary } })).status).toBe(200);
+    const holeStats = Array.from({ length: 18 }, (_, i) => ({ number: i + 1, par: 4, strokeIndex: null, score: 5, putts: 2, fir: true, gir: false, bunkerVisit: null, bunkerShots: null, sandSave: null, upAndDown: false, penaltyStrokes: 0, note: i === 0 ? "privat" : null }));
+    const pub = { ...round("pub1", "2026-06-02"), visibility: "MEMBERS_FULL", holeStats, notes: "private Notiz", computed: { scoreDifferential: 16.1, adjustedGrossScore: 90, handicapIndexBefore: 19, handicapIndexAfter: 18.7, engine: "t", computedAt: "x", stats: { holes: 18, holesScored: 18, totalPutts: 36, girs: 0, girHoles: 18 } }, moderation: { hidden: false, reason: null, at: "x", by: "Max selbst" } };
+    expect((await max.req("/api/me.php?action=round-save", { body: { round: pub, summary } })).status).toBe(200);
+
+    const ranking = await erika.req("/api/community.php?action=ranking");
+    expect(ranking.status).toBe(200);
+    const items = ranking.json?.items as { displayName: string; publicId: string; handicapIndex: number }[];
+    expect(items.map((e) => [e.displayName, e.handicapIndex])).toEqual([["Max M.", 18.7]]);
+    expect(ranking.text).not.toMatch(/max@example|"userId"/);
+    const pid = items[0].publicId;
+    const rounds = await erika.req(`/api/community.php?action=member-rounds&id=${pid}`);
+    expect((rounds.json?.items as { roundId: string }[]).map((r) => r.roundId)).toEqual(["pub1"]);
+    const view = await erika.req(`/api/community.php?action=round&member=${pid}&round=pub1`);
+    expect(view.json).toMatchObject({ level: "FULL", notes: null, isMine: false });
+    expect((view.json?.holeStats as { putts: number; note: string | null }[])[0]).toMatchObject({ putts: 2, note: null });
+    expect((await erika.req(`/api/community.php?action=round&member=${pid}&round=r1`)).status).toBe(404);
+    // Moderation: Runde verborgen – ein erneutes Speichern durch das Mitglied hebt das nicht auf
+    expect((await erika.req("/api/admin.php?action=community-moderate", { body: {} })).status).toBe(403);
+    const maxId = ((await admin.req("/api/admin.php?action=users", { body: { q: "max" } })).json?.items as { id: string }[])[0].id;
+    const mod = await admin.req("/api/admin.php?action=community-moderate", { body: { userId: maxId, roundId: "pub1", action: "HIDE", reason: "Test" } });
+    expect(mod.json).toEqual({ ok: true });
+    expect((await erika.req(`/api/community.php?action=round&member=${pid}&round=pub1`)).status).toBe(404);
+    await max.req("/api/me.php?action=round-save", { body: { round: { ...pub, moderation: null }, summary } });
+    expect((await erika.req(`/api/community.php?action=round&member=${pid}&round=pub1`)).status).toBe(404);
+    const logs = await admin.req("/api/admin.php?action=logs", { body: { action: "PUBLIC_ROUND_HIDDEN" } });
+    expect((logs.json?.items as unknown[]).length).toBe(1);
+    const overview = await admin.req("/api/admin.php?action=community", { body: {} });
+    expect(overview.json).toMatchObject({ rankingOptIn: 1, hiddenRounds: 1 });
+    // Profil aus → nicht mehr auffindbar; ungültiger HCPI wird verworfen
+    await max.req("/api/me.php?action=community-save", { body: { settings: { profileVisible: false }, summary: { ...summary, handicapIndex: -50 } } });
+    expect((await erika.req(`/api/community.php?action=member&id=${pid}`)).json?.error).toBe("MEMBER_NOT_FOUND");
+    const again = await erika.req("/api/community.php?action=ranking");
+    expect((again.json?.items as { handicapIndex: number; profileVisible: boolean }[])[0]).toMatchObject({ handicapIndex: 18.7, profileVisible: false });
+    expect((await erika.req("/api/community.php?action=members")).json?.total).toBe(0);
+  });
+
   it("Deaktivierung beendet die Sitzung und verhindert die Anmeldung; Daten bleiben", async () => {
     const list = await admin.req("/api/admin.php?action=users", { body: { q: "erika" } });
     const id = (list.json?.items as { id: string }[])[0].id;

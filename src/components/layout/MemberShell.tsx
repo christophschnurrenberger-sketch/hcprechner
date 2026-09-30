@@ -3,30 +3,40 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ClipboardList, Gauge, Home, LogOut, MapPinned, Plus, ShieldCheck, UserCircle, Wrench } from "lucide-react";
+import { BarChart3, ChevronDown, ClipboardList, Gauge, Home, LogOut, MapPinned, Plus, ShieldCheck, UserCircle, UsersRound, Wrench, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/format";
 import { useSession } from "@/components/session/SessionProvider";
 import { PageSkeleton } from "@/components/ui/feedback";
 import { Brand } from "./Brand";
 
-const NAV = [
-  { href: "/member", label: "Home", icon: Home, exact: true },
-  { href: "/member/hcp", label: "HCP", icon: Gauge },
-  { href: "/member/rounds", label: "Runden", icon: ClipboardList },
-  { href: "/member/courses", label: "Golfplätze", icon: MapPinned },
-  { href: "/member/profile", label: "Profil", icon: UserCircle },
-];
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+}
+
+/** Fünf Punkte: Community ersetzt „Golfplätze“, solange der Betreiber sie eingeschaltet hat. */
+function navFor(communityEnabled: boolean): NavItem[] {
+  return [
+    { href: "/member", label: "Home", icon: Home, exact: true },
+    { href: "/member/hcp", label: "HCP", icon: Gauge },
+    { href: "/member/rounds", label: "Runden", icon: ClipboardList },
+    communityEnabled ? { href: "/member/community", label: "Community", icon: UsersRound } : { href: "/member/courses", label: "Golfplätze", icon: MapPinned },
+    { href: "/member/profile", label: "Profil", icon: UserCircle },
+  ];
+}
 
 function normalize(path: string | null): string {
   return (path ?? "/").replace(/\/+$/, "") || "/";
 }
 
-function isActive(item: (typeof NAV)[number], path: string): boolean {
+function isActive(item: NavItem, path: string): boolean {
   return item.exact ? path === item.href : path === item.href || path.startsWith(`${item.href}/`);
 }
 
 function UserMenu() {
-  const { user, can, logout } = useSession();
+  const { user, can, logout, settings } = useSession();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -61,8 +71,16 @@ function UserMenu() {
           <Link role="menuitem" href="/member/profile" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink">
             <UserCircle className="h-4 w-4" aria-hidden /> Profil & Konto
           </Link>
+          <Link role="menuitem" href="/member/stats" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink">
+            <BarChart3 className="h-4 w-4" aria-hidden /> Statistik
+          </Link>
+          {settings.community.communityEnabled && (
+            <Link role="menuitem" href="/member/courses" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink">
+              <MapPinned className="h-4 w-4" aria-hidden /> Golfplätze
+            </Link>
+          )}
           <Link role="menuitem" href="/member/tools" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink">
-            <Wrench className="h-4 w-4" aria-hidden /> Werkzeuge & Statistik
+            <Wrench className="h-4 w-4" aria-hidden /> Werkzeuge
           </Link>
           {can("admin.access") && (
             <Link role="menuitem" href="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink">
@@ -93,9 +111,10 @@ function UserMenu() {
  * ausschließlich die API nach serverseitiger Prüfung.
  */
 export function MemberShell({ children }: { children: ReactNode }) {
-  const { status, user } = useSession();
+  const { status, user, settings } = useSession();
   const router = useRouter();
   const path = normalize(usePathname());
+  const NAV = navFor(settings.community.communityEnabled);
   const needsPassword = Boolean(user?.mustChangePassword) && path !== "/member/password";
   const needsOnboarding = Boolean(user && !user.mustChangePassword && !user.onboarded) && path !== "/member/welcome";
 
@@ -106,7 +125,7 @@ export function MemberShell({ children }: { children: ReactNode }) {
     else if (needsOnboarding) router.replace("/member/welcome");
   }, [status, user, needsPassword, needsOnboarding, path, router]);
 
-  const focusMode = path === "/member/rounds/new" || path === "/member/welcome" || path === "/member/password";
+  const focusMode = path === "/member/rounds/new" || path === "/member/rounds/stats" || path === "/member/welcome" || path === "/member/password";
   const ready = status === "ready" && user && !needsPassword && !needsOnboarding;
 
   return (

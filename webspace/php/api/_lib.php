@@ -22,8 +22,8 @@ const HCP_PASSWORD_MIN = 8;
 /** Rollen → Berechtigungen (identisch zu src/lib/auth/permissions.ts). */
 function hcp_role_permissions(): array
 {
-    $support = ['admin.access', 'users.read', 'rounds.read', 'courses.read', 'logs.read', 'system.read', 'rules.read'];
-    $admin = array_merge($support, ['users.write', 'users.impersonate', 'courses.write', 'import']);
+    $support = ['admin.access', 'users.read', 'rounds.read', 'courses.read', 'logs.read', 'system.read', 'rules.read', 'community.read'];
+    $admin = array_merge($support, ['users.write', 'users.impersonate', 'courses.write', 'import', 'community.moderate']);
     $super = array_merge($admin, ['users.roles', 'users.delete', 'settings.write']);
     return ['USER' => [], 'SUPPORT' => $support, 'ADMIN' => $admin, 'SUPER_ADMIN' => $super];
 }
@@ -314,13 +314,28 @@ function hcp_default_settings(): array
         'privacyText' => null,
         'contactEmail' => null,
         'mailFrom' => null,
+        'community' => hcp_default_community_flags(),
     ];
+}
+
+/** Community-Schalter des Betreibers (identisch zu DEFAULT_FLAGS in src/lib/community/policy.ts). */
+function hcp_default_community_flags(): array
+{
+    return ['communityEnabled' => true, 'rankingEnabled' => true, 'publicRoundsEnabled' => true, 'statsSharingEnabled' => true, 'activityFeedEnabled' => true];
 }
 
 function hcp_settings(): array
 {
     $stored = hcp_read_json_file(hcp_data_dir() . '/settings.php') ?? [];
-    return array_merge(hcp_default_settings(), array_intersect_key($stored, hcp_default_settings()));
+    $settings = array_merge(hcp_default_settings(), array_intersect_key($stored, hcp_default_settings()));
+    $flags = hcp_default_community_flags();
+    foreach ($flags as $k => $v) {
+        if (isset($settings['community'][$k]) && is_bool($settings['community'][$k])) {
+            $flags[$k] = $settings['community'][$k];
+        }
+    }
+    $settings['community'] = $flags;
+    return $settings;
 }
 
 function hcp_save_settings(array $settings): void
@@ -935,3 +950,6 @@ function hcp_send_reset(array &$config, array $user, string $token, int $hours =
         . "\n\nDer Link ist " . ($hours === 1 ? '1 Stunde' : $hours . ' Stunden') . " gültig. Wenn du das nicht angefordert hast, ignoriere diese E-Mail – dein Passwort bleibt unverändert.\n";
     return hcp_send_mail($config, (string)$user['email'], 'Passwort zurücksetzen', $text);
 }
+
+// Community (Ranking, Mitglieder, öffentliche Runden) – eigene Datei, gleiche Regeln wie src/lib/community
+require_once __DIR__ . '/_community.php';
