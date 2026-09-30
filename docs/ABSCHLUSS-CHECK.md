@@ -8,8 +8,8 @@ TypeScript ↔ PHP, Node-API mit PGlite und PHP-API gegen `php -S`), ESLint und 
 ## Version 2.4 – GPS: Entfernung zum Grün und Apple Watch (GPS-Master-Prompt, Definition of Done §118)
 
 Browser-Abläufe (`e2e/flows.cjs`: Abschnitt M neu, GPS-Schritte in G; simulierte Geolocation) gegen beide Editionen:
-**Node __NODE_E2E__** und **Webspace __WS_E2E__** (ZIP 2.4.0 auf dem IONOS-ähnlichen Apache). Davon betreffen
-30 Prüfungen GPS; sie sind in beiden Editionen grün. 96 neue Unit-Tests. Konzept:
+**Node 130/130** und **Webspace** (ZIP 2.4.0 auf dem IONOS-ähnlichen Apache; Ergebnis folgt). Davon betreffen
+30 Prüfungen GPS (in der Node-Edition alle grün). 96 neue Unit-Tests. Konzept:
 [`GPS-DISTANZ.md`](GPS-DISTANZ.md), native Apps: [`native/apple/README.md`](../native/apple/README.md).
 
 | Punkt (§118) | Status | Nachweis |
