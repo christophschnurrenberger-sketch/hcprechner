@@ -160,6 +160,21 @@ describe("Mitglieder-Service: Handicap", () => {
     );
   });
 
+  it("ungeprüftes Rating: nur mit exakt bestätigten Werten des Spielers, Snapshot markiert die Bestätigung", async () => {
+    const rot = { kind: "DB" as const, courseId: COURSE_ID, layoutId: LAYOUT_ID, teeColor: "Rot", gender: "F" as const };
+    const ok = await createRound(emptyMemberDoc("u1"), input({ course: { ...rot, confirmRating: { par: 72, courseRating: 73.5, slopeRating: 128 } } }), ctx);
+    expect(ok.doc.rounds[0].rating).toMatchObject({ courseRating: 73.5, slopeRating: 128, par: 72, verified: false, playerConfirmed: true });
+    // Bearbeiten übernimmt die Bestätigung
+    const again = roundToInput(ok.doc.rounds[0]);
+    expect(again.course).toMatchObject({ kind: "DB", confirmRating: { par: 72, courseRating: 73.5, slopeRating: 128 } });
+    // abweichende Werte (z. B. inzwischen geändert) werden abgelehnt
+    await expectApiError(previewRoundInput(emptyMemberDoc("u1"), input({ course: { ...rot, confirmRating: { par: 72, courseRating: 73.4, slopeRating: 128 } } }), ctx), "RATING_CHANGED");
+    // geprüfte Ratings brauchen keine Bestätigung; eine mitgeschickte ändert nichts
+    const gelb = await createRound(emptyMemberDoc("u1"), input({ course: { ...input().course!, confirmRating: { par: 70, courseRating: 60, slopeRating: 100 } } as RoundInput["course"] }), ctx);
+    expect(gelb.doc.rounds[0].rating).toMatchObject({ courseRating: 71.8, verified: true });
+    expect(gelb.doc.rounds[0].rating.playerConfirmed).toBeUndefined();
+  });
+
   it("Scorekarte: GBE mit Netto-Doppelbogey aus den Lochdaten des Platzes", async () => {
     const strokes = PARS.map((p) => p + 6); // überall weit über Netto-Doppelbogey
     const preview = await previewRoundInput(completeOnboarding(emptyMemberDoc("u1"), { startHandicapIndex: 20 }), input({ score: { mode: "HOLES", strokes } }), ctx);

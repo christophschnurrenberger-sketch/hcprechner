@@ -71,6 +71,8 @@ export interface RatingSnapshot {
   validTo?: IsoDate | null;
   /** true when the values were typed in by the user (e.g. round abroad). */
   manual?: boolean;
+  /** true when an unverified rating from the course database was confirmed by the player against the scorecard. */
+  playerConfirmed?: boolean;
 }
 
 export interface CourseSnapshot {

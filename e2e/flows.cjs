@@ -337,6 +337,32 @@ async function waitPath(page, re, timeout = 15000) {
   await u.fill('input[aria-label="Golfplatz suchen"]', "");
   check("Favorit gespeichert", await visible(u.locator("section", { hasText: "Favoriten" }).locator("text=Ottobeuren").first(), 8000));
 
+  // Ungeprüftes Rating (Startdaten Ottobeuren): Werte mit der Scorekarte bestätigen statt abtippen
+  await u.goto(`${BASE}/member/rounds/new/`);
+  await u.waitForSelector("text=Wie viele Löcher hast du gespielt?");
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  await u.click("button:has-text('Allgäuer Golf- und Landclub Ottobeuren') >> nth=0");
+  await u.getByRole("radio", { name: /18-Loch-Platz/ }).click();
+  await u.getByRole("radio", { name: /Gelb/ }).first().click();
+  const confirmBox = await visible(u.locator("text=Stimmen diese Werte mit deiner Scorekarte überein?"), 5000);
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  const needsConfirm = await visible(u.locator("text=Bitte bestätige die Werte"), 3000);
+  await u.getByRole("button", { name: "Ja, Werte stimmen" }).click();
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  await u.fill("#gbe", "90");
+  await u.getByRole("button", { name: "Weiter", exact: true }).click();
+  await u.waitForSelector("text=Score Differential", { timeout: 20000 });
+  // SD = 113/131 × (90 − 72,3) = 15,3 (Werte der Startdaten, nur zum Test)
+  const confirmedPreview = await u.locator("main").innerText();
+  check("Ungeprüftes Rating: Werte bestätigen statt abtippen", confirmBox && needsConfirm && confirmedPreview.includes("15,3"));
+  // Löcher im Platz-Schritt umschaltbar; ohne 9-Loch-Rating klarer Hinweis
+  await u.getByRole("button", { name: "Zurück", exact: true }).click();
+  await u.getByRole("button", { name: "Zurück", exact: true }).click();
+  await u.getByRole("radio", { name: "Loch 1–9", exact: true }).click();
+  const nineHint = await visible(u.locator("text=Kein 9-Loch-Rating vorhanden"), 5000);
+  await u.getByRole("radio", { name: "18 Loch", exact: true }).click();
+  check("Löcher im Platz-Schritt umschaltbar (18 Loch / Loch 1–9 / Loch 10–18)", nineHint && (await visible(u.getByRole("radio", { name: /Gelb/ }).first(), 5000)));
+
   // HCP-Seite
   await u.goto(`${BASE}/member/hcp/`);
   await u.waitForSelector("text=So entsteht dein Handicap Index");

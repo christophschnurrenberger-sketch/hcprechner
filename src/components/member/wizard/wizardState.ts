@@ -2,7 +2,7 @@
  * Zustand des Runden-Wizards und Umwandlung in die API-Eingabe (RoundInput).
  * Hier wird nur die Eingabe zusammengestellt und auf Vollständigkeit geprüft – berechnet wird im Backend.
  */
-import type { RoundInput } from "@/lib/api/types";
+import type { ConfirmedRating, RoundInput } from "@/lib/api/types";
 import { parseDecimal } from "@/lib/courses/csv";
 import type { Gender, HoleScore, NineSide, PccValue, RoundCategory } from "@/lib/whs/types";
 
@@ -35,6 +35,8 @@ export interface WizardState {
   layoutId: string | null;
   gender: Gender;
   teeColor: string | null;
+  /** Ungeprüftes Rating: vom Spieler mit der Scorekarte bestätigte Werte (sonst null). */
+  ratingConfirmed: ConfirmedRating | null;
   manual: ManualCourse;
   scoreMode: "GBE" | "HOLES" | "STABLEFORD_TOTAL";
   gbe: string;
@@ -57,6 +59,7 @@ export function initialState(today: string, gender: Gender = "M"): WizardState {
     layoutId: null,
     gender,
     teeColor: null,
+    ratingConfirmed: null,
     manual: { courseName: "", city: "", teeColor: "", par: "", courseRating: "", slopeRating: "" },
     scoreMode: "GBE",
     gbe: "",
@@ -77,6 +80,31 @@ export function restoreState(raw: unknown, fallback: WizardState): WizardState {
     manual: { ...fallback.manual, ...(w.manual ?? {}) },
     strokes: Array.isArray(w.strokes) ? w.strokes : [],
   };
+}
+
+/** Felder, deren Änderung eine Bestätigung des Ratings ungültig macht (anderer Abschlag, andere Löcher …). */
+const RATING_KEYS: (keyof WizardState)[] = ["courseKind", "courseId", "layoutId", "teeColor", "gender", "holes", "nine", "date"];
+
+/** Übernimmt eine Änderung; betrifft sie den Abschlag, verfällt die Bestätigung des Ratings. */
+export function applyPatch(s: WizardState, patch: Partial<WizardState>): WizardState {
+  const next = { ...s, ...patch };
+  if (!("ratingConfirmed" in patch) && RATING_KEYS.some((k) => k in patch && patch[k] !== s[k])) next.ratingConfirmed = null;
+  return next;
+}
+
+/** Gespielte Löcher als eine Auswahl: 18 Loch, vordere/hintere neun oder 9 Loch (9-Loch-Platz). */
+export type HolesChoice = "18" | "FRONT" | "BACK" | "9";
+
+export function holesChoiceOf(s: Pick<WizardState, "holes" | "nine">, layoutHoles: number | null): HolesChoice {
+  if (s.holes === 18) return "18";
+  if (layoutHoles !== null && layoutHoles < 18) return "9";
+  return s.nine === "BACK" ? "BACK" : "FRONT";
+}
+
+export function holesPatch(choice: HolesChoice): Pick<WizardState, "holes" | "nine"> {
+  if (choice === "18") return { holes: 18, nine: null };
+  if (choice === "9") return { holes: 9, nine: null };
+  return { holes: 9, nine: choice };
 }
 
 export type StepErrors = Record<string, string>;
@@ -124,7 +152,7 @@ export function stepErrors(s: WizardState, step: Step): StepErrors {
 export function toRoundInput(s: WizardState): RoundInput {
   const course: RoundInput["course"] =
     s.courseKind === "DB"
-      ? { kind: "DB", courseId: s.courseId!, layoutId: s.layoutId!, teeColor: s.teeColor!, gender: s.gender }
+      ? { kind: "DB", courseId: s.courseId!, layoutId: s.layoutId!, teeColor: s.teeColor!, gender: s.gender, ...(s.ratingConfirmed ? { confirmRating: s.ratingConfirmed } : {}) }
       : {
           kind: "MANUAL",
           courseName: s.manual.courseName.trim(),

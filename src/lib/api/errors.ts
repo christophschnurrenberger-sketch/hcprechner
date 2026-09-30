@@ -22,6 +22,7 @@ export type ApiErrorCode =
   | "COURSE_NOT_FOUND"
   | "COURSE_RATING_MISSING"
   | "RATING_NOT_VERIFIED"
+  | "RATING_CHANGED"
   | "NINE_HOLE_RATING_MISSING"
   | "HOLE_DATA_MISSING"
   | "ROUND_NOT_FOUND"
@@ -63,7 +64,8 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
   TOKEN_INVALID: "Der Link ist ungültig oder abgelaufen.",
   COURSE_NOT_FOUND: "Der Golfplatz wurde nicht gefunden.",
   COURSE_RATING_MISSING: "Für diesen Abschlag liegt kein gültiges Course- und Slope-Rating vor.",
-  RATING_NOT_VERIFIED: "Das Rating dieses Abschlags ist noch nicht geprüft. Bitte übernimm die Werte von deiner Scorekarte.",
+  RATING_NOT_VERIFIED: "Das Rating dieses Abschlags ist noch nicht geprüft. Bitte vergleiche die Werte mit deiner Scorekarte und bestätige sie – oder gib sie selbst ein.",
+  RATING_CHANGED: "Die Werte dieses Abschlags wurden inzwischen geändert. Bitte vergleiche sie erneut mit deiner Scorekarte.",
   NINE_HOLE_RATING_MISSING: "Für diese neun Löcher liegt kein offizielles 9-Loch-Rating vor.",
   HOLE_DATA_MISSING: "Für diesen Platz fehlen Par und Handicap je Loch. Bitte gib das Gesamtergebnis (GBE) ein.",
   ROUND_NOT_FOUND: "Diese Runde gibt es nicht (mehr).",

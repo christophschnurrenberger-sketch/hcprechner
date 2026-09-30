@@ -8,19 +8,21 @@ import { api } from "@/lib/api/client";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import type { MemberCourseLists, RoundInput, RoundPreview, RoundSaveResult } from "@/lib/api/types";
 import { fetchCourse } from "@/lib/courses/client";
-import { availableTees, holesFor } from "@/lib/courses/ratingSelection";
+import { availableTees, holesFor, type TeeOption } from "@/lib/courses/ratingSelection";
+import { adminCoursePath } from "@/lib/courses/paths";
 import { TEE_SWATCH, genderLabel } from "@/lib/courses/tees";
 import type { CourseDto, LayoutDto } from "@/lib/courses/types";
 import type { CourseSummary } from "@/lib/courses/summary";
 import { cn, formatDate, formatDecimal, formatHcp } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
 import { Alert, Button, ChoiceCards, Field, Input, Segmented } from "@/components/ui";
+import { useSession } from "@/components/session/SessionProvider";
 import { Spinner, useToast } from "@/components/ui/feedback";
 import { CoursePicker } from "@/components/courses/CoursePicker";
 import { ChangeBadge } from "@/components/member/HcpHero";
 import { roundHref } from "@/components/member/RoundList";
 import { HoleByHoleInput } from "./HoleByHoleInput";
-import { STEPS, draftLabel, stepErrors, toRoundInput, type Step, type WizardState } from "./wizardState";
+import { STEPS, applyPatch, draftLabel, holesChoiceOf, holesPatch, stepErrors, toRoundInput, type HolesChoice, type Step, type WizardState } from "./wizardState";
 
 // ---------------------------------------------------------------------------
 // Kleine Bausteine
@@ -88,6 +90,60 @@ function QuickCourses({ lists, onPick }: { lists: MemberCourseLists | undefined;
   );
 }
 
+/** Der im Wizard gewählte Abschlag (Rating-Set passend zu Geschlecht, Löchern, Hälfte und Datum). */
+function selectedTeeOf(layout: LayoutDto | null, s: WizardState): TeeOption | null {
+  if (!layout || !s.teeColor) return null;
+  const splitNine = s.holes === 9 && layout.holesCount >= 18;
+  return (
+    availableTees(layout, { gender: s.gender, holes: s.holes, date: s.date }).find((t) => t.teeColor === s.teeColor && (!splitNine || t.nine === (s.nine ?? "FRONT"))) ?? null
+  );
+}
+
+/** Ungeprüftes Rating: Werte anzeigen und vom Spieler mit der Scorekarte bestätigen lassen. */
+function ConfirmRating({ tee, state, update, onManual, error }: { tee: TeeOption; state: WizardState; update: (p: Partial<WizardState>) => void; onManual: () => void; error?: string }) {
+  const r = tee.ratingSet;
+  const values = [
+    { label: "Par", value: String(r.par ?? "–") },
+    { label: "Course Rating", value: formatDecimal(r.courseRating) },
+    { label: "Slope", value: String(r.slopeRating ?? "–") },
+  ];
+  if (state.ratingConfirmed) {
+    return (
+      <Alert tone="success" title="Werte bestätigt">
+        Du hast Par {values[0].value}, Course Rating {values[1].value} und Slope {values[2].value} mit deiner Scorekarte verglichen.{" "}
+        <button type="button" className="font-medium text-brand hover:underline" onClick={() => update({ ratingConfirmed: null })}>
+          Zurücknehmen
+        </button>
+      </Alert>
+    );
+  }
+  return (
+    <div className="space-y-3 rounded-2xl border border-warning/40 bg-warning-soft/60 p-4" role="group" aria-labelledby="confirm-rating-title">
+      <div>
+        <p id="confirm-rating-title" className="font-semibold text-ink">Stimmen diese Werte mit deiner Scorekarte überein?</p>
+        <p className="mt-0.5 text-sm text-ink-2">Dieses Rating ist noch nicht geprüft. Vergleiche es kurz mit der Scorekarte deines Abschlags.</p>
+      </div>
+      <dl className="grid grid-cols-3 gap-2">
+        {values.map((v) => (
+          <div key={v.label} className="rounded-xl bg-surface px-3 py-2 text-center">
+            <dt className="text-xs text-ink-3">{v.label}</dt>
+            <dd className="tabular text-lg font-semibold text-ink">{v.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button onClick={() => update({ ratingConfirmed: { par: r.par!, courseRating: r.courseRating!, slopeRating: r.slopeRating! } })}>
+          <Check className="h-4 w-4" aria-hidden /> Ja, Werte stimmen
+        </Button>
+        <Button variant="secondary" onClick={onManual}>
+          Nein, andere Werte eingeben
+        </Button>
+      </div>
+      {error && <p className="text-sm font-medium text-critical">{error}</p>}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Schritt: Platz
 // ---------------------------------------------------------------------------
@@ -109,6 +165,7 @@ function CourseStep({
 }) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { can } = useSession();
 
   async function pickById(id: string) {
     setLoadingId(id);
@@ -202,7 +259,18 @@ function CourseStep({
   const tees = layout
     ? availableTees(layout, { gender: state.gender, holes: state.holes, date: state.date }).filter((t) => (state.holes === 9 && splitNine ? t.nine === (state.nine ?? "FRONT") : true))
     : [];
-  const selectedTee = tees.find((t) => t.teeColor === state.teeColor) ?? null;
+  const selectedTee = selectedTeeOf(layout, state);
+  const holeOptions: { value: HolesChoice; label: string }[] =
+    layout && layout.holesCount >= 18
+      ? [
+          { value: "18", label: "18 Loch" },
+          { value: "FRONT", label: "Loch 1–9" },
+          { value: "BACK", label: "Loch 10–18" },
+        ]
+      : [
+          { value: "9", label: "9 Loch" },
+          { value: "18", label: "18 Loch" },
+        ];
   const anyEighteen = layout ? availableTees(layout, { gender: state.gender, holes: 18, date: state.date }).length > 0 : false;
 
   return (
@@ -231,19 +299,17 @@ function CourseStep({
 
       {layout && (
         <>
+          <Question title="Gespielte Löcher">
+            <Segmented name="Gespielte Löcher" value={holesChoiceOf(state, layout.holesCount)} onChange={(choice) => update({ ...holesPatch(choice), teeColor: null, strokes: [] })} options={holeOptions} />
+          </Question>
           <Question title="Gespielt als">
             <Segmented name="Geschlecht" value={state.gender} onChange={(gender) => update({ gender, teeColor: null })} options={[{ value: "M", label: "Herren" }, { value: "F", label: "Damen" }]} />
           </Question>
-          {splitNine && (
-            <Question title="Welche neun Löcher?">
-              <Segmented name="Hälfte" value={state.nine ?? "FRONT"} onChange={(nine) => update({ nine, teeColor: null })} options={[{ value: "FRONT", label: "Loch 1–9" }, { value: "BACK", label: "Loch 10–18" }]} />
-            </Question>
-          )}
           <Question title="Von welchem Abschlag?" hint="Es werden nur Abschläge angezeigt, für die ein Rating hinterlegt ist.">
             {tees.length === 0 ? (
               <Alert tone="warning" title={state.holes === 9 ? "Kein 9-Loch-Rating vorhanden" : "Kein Rating vorhanden"}>
                 {state.holes === 9 && anyEighteen
-                  ? "Für diese neun Löcher gibt es kein offizielles 9-Loch-Rating. Das 18-Loch-Rating darf nicht halbiert werden. Wähle 18 Loch oder gib die Werte von der Scorekarte ein."
+                  ? "Für diese neun Löcher ist noch kein offizielles 9-Loch-Rating hinterlegt. Clubs veröffentlichen es meist in ihrer Vorgabentabelle (Loch 1–9 bzw. 10–18). Das 18-Loch-Rating darf nicht halbiert werden."
                   : `Für ${genderLabel(state.gender)} ist für dieses Datum kein Rating hinterlegt.`}
                 <div className="mt-2 flex flex-wrap gap-3">
                   {state.holes === 9 && anyEighteen && (
@@ -254,6 +320,11 @@ function CourseStep({
                   <button type="button" className="font-medium text-brand hover:underline" onClick={() => toManual(true)}>
                     Werte von der Scorekarte eingeben
                   </button>
+                  {can("courses.write") && (
+                    <Link href={adminCoursePath(course.id)} className="font-medium text-brand hover:underline">
+                      Rating im Admin-Bereich ergänzen
+                    </Link>
+                  )}
                 </div>
               </Alert>
             ) : (
@@ -284,16 +355,7 @@ function CourseStep({
               </div>
             )}
             {errors.tee && <p className="text-sm font-medium text-critical">{errors.tee}</p>}
-            {selectedTee && !selectedTee.verified && (
-              <Alert tone="warning" title="Rating noch nicht geprüft">
-                Für diesen Abschlag liegen noch keine geprüften Werte vor. Bitte übernimm Par, Course Rating und Slope von deiner Scorekarte.
-                <div className="mt-2">
-                  <button type="button" className="font-medium text-brand hover:underline" onClick={() => toManual(true)}>
-                    Werte von der Scorekarte eingeben
-                  </button>
-                </div>
-              </Alert>
-            )}
+            {selectedTee && !selectedTee.verified && <ConfirmRating tee={selectedTee} state={state} update={update} onManual={() => toManual(true)} error={errors.confirm} />}
           </Question>
         </>
       )}
@@ -323,7 +385,7 @@ function ReviewStep({ input, editId, state, update, onFix }: { input: RoundInput
           <Alert tone="error" title="So kann die Runde nicht berechnet werden">
             {userMessage(error)}
             <div className="mt-2 flex flex-wrap gap-3">
-              {error instanceof ApiError && (error.code === "RATING_NOT_VERIFIED" || error.code === "COURSE_RATING_MISSING" || error.code === "NINE_HOLE_RATING_MISSING") && (
+              {error instanceof ApiError && (error.code === "RATING_NOT_VERIFIED" || error.code === "RATING_CHANGED" || error.code === "COURSE_RATING_MISSING" || error.code === "NINE_HOLE_RATING_MISSING") && (
                 <button type="button" className="font-medium text-brand hover:underline" onClick={() => onFix("course", true)}>
                   Werte von der Scorekarte eingeben
                 </button>
@@ -470,7 +532,7 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
   const [draftSaved, setDraftSaved] = useState<string | null>(null);
   const topRef = useRef<HTMLDivElement>(null);
 
-  const update = (patch: Partial<WizardState>) => setState((s) => ({ ...s, ...patch }));
+  const update = (patch: Partial<WizardState>) => setState((s) => applyPatch(s, patch));
   const index = STEPS.findIndex((s) => s.key === state.step);
 
   // Lochdaten des gewählten Abschlags (für die Loch-für-Loch-Eingabe)
@@ -502,6 +564,10 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
 
   function next() {
     const e = stepErrors(state, state.step);
+    if (state.step === "course" && state.courseKind === "DB" && !e.tee) {
+      const tee = selectedTeeOf(layout, state);
+      if (tee && !tee.verified && !state.ratingConfirmed) e.confirm = "Bitte bestätige die Werte oder gib sie von der Scorekarte ein.";
+    }
     if (Object.keys(e).length > 0) {
       setErrors(e);
       return;
@@ -544,6 +610,18 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
 
       {state.step === "basics" && (
         <div className="space-y-6">
+          <Question title="Wie viele Löcher hast du gespielt?">
+            <ChoiceCards
+              columns={2}
+              value={state.holes}
+              onChange={(holes) => update({ holes, nine: holes === 9 ? state.nine ?? "FRONT" : null, teeColor: null, strokes: [] })}
+              options={[
+                { value: 18, label: "18 Loch", description: "Ganze Runde" },
+                { value: 9, label: "9 Loch", description: "Vordere oder hintere neun – Auswahl beim Platz" },
+              ]}
+            />
+            {state.holes === 9 && <p className="text-sm text-ink-3">9-Loch-Runden werden mit einem erwarteten Ergebnis zu einem 18-Loch-Wert ergänzt. Dafür braucht der Platz ein offizielles 9-Loch-Rating.</p>}
+          </Question>
           <Question title="Wann hast du gespielt?">
             <Input type="date" value={state.date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => update({ date: e.target.value, teeColor: null })} aria-label="Spieldatum" className="h-12 text-base" />
             {errors.date && <p className="text-sm font-medium text-critical">{errors.date}</p>}
@@ -558,10 +636,6 @@ export function RoundWizard({ initial, initialCourse, editId, draftId, lists }: 
                 { value: "OTHER", label: "Sonstige", description: "Training, zählt nicht fürs Handicap", icon: <UserRound className="h-4 w-4" /> },
               ]}
             />
-          </Question>
-          <Question title="Wie viele Löcher?">
-            <Segmented name="Löcher" value={state.holes} onChange={(holes) => update({ holes, nine: holes === 9 ? "FRONT" : null, teeColor: null, strokes: [] })} options={[{ value: 18, label: "18 Loch" }, { value: 9, label: "9 Loch" }]} />
-            {state.holes === 9 && <p className="text-sm text-ink-3">9-Loch-Runden werden mit einem erwarteten Ergebnis zu einem 18-Loch-Wert ergänzt. Dafür braucht der Platz ein offizielles 9-Loch-Rating.</p>}
           </Question>
         </div>
       )}

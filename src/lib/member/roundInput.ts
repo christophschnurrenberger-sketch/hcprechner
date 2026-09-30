@@ -3,7 +3,9 @@
  *
  * Verbindlich im Backend: Bei Plätzen aus der Datenbank werden Par, Course Rating, Slope und Lochdaten
  * hier aus den Golfplatzdaten aufgelöst (zum Spieldatum gültiges, verifiziertes Rating) – Werte aus dem
- * Client werden dafür nicht übernommen. Es wird nie ein 9-Loch-Rating aus einem 18-Loch-Rating abgeleitet.
+ * Client werden dafür nicht übernommen. Ein ungeprüftes Rating wird nur verwendet, wenn der Spieler genau
+ * diese Werte mit seiner Scorekarte bestätigt hat (`confirmRating`). Es wird nie ein 9-Loch-Rating aus
+ * einem 18-Loch-Rating abgeleitet.
  */
 import { z } from "zod";
 import { apiError } from "@/lib/api/errors";
@@ -18,7 +20,14 @@ const gender = z.enum(["M", "F"]);
 const holeScore = z.union([z.number().int().min(1).max(20), z.literal("PICKUP"), z.null()]);
 
 const courseInputSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("DB"), courseId: z.string().min(1), layoutId: z.string().min(1), teeColor: z.string().min(1), gender }),
+  z.object({
+    kind: z.literal("DB"),
+    courseId: z.string().min(1),
+    layoutId: z.string().min(1),
+    teeColor: z.string().min(1),
+    gender,
+    confirmRating: z.object({ par: z.number().int(), courseRating: z.number(), slopeRating: z.number().int() }).optional(),
+  }),
   z.object({
     kind: z.literal("MANUAL"),
     courseName: z.string().trim().min(2, "Bitte den Namen des Golfplatzes eingeben.").max(120),
@@ -64,6 +73,11 @@ export const roundInputSchema = z
       ctx.addIssue({ code: "custom", path: ["score"], message: `Bitte ${v.holes} Löcher erfassen.` });
     }
   });
+
+/** Stimmen die bestätigten Werte exakt mit dem hinterlegten Rating überein? */
+function sameRatingValues(set: { par: number | null; courseRating: number | null; slopeRating: number | null }, c: { par: number; courseRating: number; slopeRating: number }): boolean {
+  return set.par === c.par && set.slopeRating === c.slopeRating && set.courseRating !== null && Math.abs(set.courseRating - c.courseRating) < 1e-9;
+}
 
 export interface CourseLookup {
   (courseId: string): CourseDto | null | Promise<CourseDto | null>;
@@ -119,10 +133,18 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
     if (!layout) throw apiError("COURSE_NOT_FOUND", "Dieser Platz (Layout) ist nicht mehr verfügbar.");
     const nine = input.holes === 9 && layout.holesCount >= 18 ? input.nine ?? "FRONT" : null;
     const selection = selectRatingSet(layout.ratingSets, { date: input.date, gender: ci.gender, teeColor: ci.teeColor, holes: input.holes, nine });
-    if (selection.status === "NOT_VERIFIED") throw apiError("RATING_NOT_VERIFIED");
-    if (selection.status === "NINE_HOLE_RATING_MISSING") throw apiError("NINE_HOLE_RATING_MISSING");
-    if (selection.status !== "OK" || !selection.ratingSet) throw apiError("COURSE_RATING_MISSING");
-    rating = toRatingSnapshot(selection.ratingSet);
+    let playerConfirmed = false;
+    if (selection.status === "NOT_VERIFIED" && selection.ratingSet) {
+      if (!ci.confirmRating) throw apiError("RATING_NOT_VERIFIED");
+      if (!sameRatingValues(selection.ratingSet, ci.confirmRating)) throw apiError("RATING_CHANGED");
+      playerConfirmed = true;
+    } else if (selection.status === "NINE_HOLE_RATING_MISSING") {
+      throw apiError("NINE_HOLE_RATING_MISSING");
+    } else if (selection.status !== "OK" || !selection.ratingSet) {
+      throw apiError("COURSE_RATING_MISSING");
+    }
+    const ratingSet = selection.ratingSet!;
+    rating = playerConfirmed ? { ...toRatingSnapshot(ratingSet), playerConfirmed: true } : toRatingSnapshot(ratingSet);
     if (usesHoles) {
       const holes = holesFor(layout, { gender: ci.gender, teeColor: ci.teeColor, holes: input.holes, nine });
       if (!holes) throw apiError("HOLE_DATA_MISSING");
@@ -137,7 +159,7 @@ export async function resolveRound(input: RoundInput, lookup: CourseLookup, opti
       region: dto.region,
       country: dto.country,
       teeColor: ci.teeColor,
-      teeName: selection.ratingSet.teeName,
+      teeName: ratingSet.teeName,
       gender: ci.gender,
     };
   } else if (input.course?.kind === "MANUAL") {
@@ -203,7 +225,16 @@ export function roundToInput(round: Round): RoundInput {
     round.entry.mode === "SCORE_DIFFERENTIAL" && round.rating.courseRating == null
       ? null
       : round.course.courseId && round.course.layoutId && round.course.teeColor && !round.rating.manual
-        ? { kind: "DB", courseId: round.course.courseId, layoutId: round.course.layoutId, teeColor: round.course.teeColor, gender: round.course.gender ?? "M" }
+        ? {
+            kind: "DB",
+            courseId: round.course.courseId,
+            layoutId: round.course.layoutId,
+            teeColor: round.course.teeColor,
+            gender: round.course.gender ?? "M",
+            ...(round.rating.playerConfirmed && round.rating.par != null && round.rating.courseRating != null && round.rating.slopeRating != null
+              ? { confirmRating: { par: round.rating.par, courseRating: round.rating.courseRating, slopeRating: round.rating.slopeRating } }
+              : {}),
+          }
         : {
             kind: "MANUAL",
             courseName: round.course.courseName,

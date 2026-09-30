@@ -24,7 +24,7 @@ interface Loaded {
 function fromInput(input: RoundInput, base: WizardState): { state: WizardState; unsupported?: string } {
   const s: WizardState = { ...base, step: "review", date: input.date, category: input.category, holes: input.holes, nine: input.nine ?? null, pcc: input.pcc ?? 0, notes: input.notes ?? "" };
   const c = input.course;
-  if (c?.kind === "DB") Object.assign(s, { courseKind: "DB", courseId: c.courseId, layoutId: c.layoutId, teeColor: c.teeColor, gender: c.gender });
+  if (c?.kind === "DB") Object.assign(s, { courseKind: "DB", courseId: c.courseId, layoutId: c.layoutId, teeColor: c.teeColor, gender: c.gender, ratingConfirmed: c.confirmRating ?? null });
   else if (c?.kind === "MANUAL")
     Object.assign(s, {
       courseKind: "MANUAL",

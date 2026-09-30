@@ -24,10 +24,16 @@ Stand: 29.09.2026
 - **Nicht erfasst** (nicht verfügbar, nichts geschätzt): Par und Handicap (Stroke Index) je Loch, Längen je Loch,
   weitere Abschläge (z. B. Weiß/Blau/Orange), 9-Loch-Ratings (Front/Back Nine), Gültigkeitszeitraum, Koordinaten.
   Diese stehen auf der Scorekarte bzw. im Birdiebook des Clubs.
+- **9-Loch-Ratings:** Der Club veröffentlicht auf „Scorekarte & Vorgabe“ Vorgabentabellen für Loch 1–18, 1–9 und
+  10–18 (sowie Grün 1–9) – so die Suchergebnisse vom 30.09.2026. Die Tabellen selbst waren aus der Build-Umgebung
+  nicht abrufbar, und die Suchergebnisse enthalten keine 9-Loch-Werte. Deshalb sind keine 9-Loch-Ratings erfasst
+  (kein Halbieren der 18-Loch-Werte). Nachtragen im Admin-Bereich: Golfplätze → Ottobeuren → 18-Loch-Platz →
+  Rating hinzufügen (9 Loch, Loch 1–9 bzw. 10–18, Abschlag, Geschlecht, Par, CR, Slope, Quelle).
 - 6-Loch-Kurzplatz als Layout ohne Rating angelegt (die Suchergebnisse enthielten widersprüchliche Angaben).
 - Freigabe: im Admin-Bereich die Werte mit der aktuellen Scorekarte abgleichen, Lochdaten ergänzen und die Ratings
-  per Klick verifizieren. Erst dann werden sie im Runden-Assistenten automatisch verwendet; bis dahin werden CR und
-  Slope bei der Erfassung manuell von der Scorekarte eingegeben („Rating selbst eingeben“).
+  per Klick verifizieren. Erst dann werden sie im Runden-Assistenten automatisch verwendet; bis dahin zeigt der
+  Assistent die Werte an, und der Spieler bestätigt sie mit seiner Scorekarte („Ja, Werte stimmen“) oder gibt sie
+  selbst ein. Die Runde vermerkt „ungeprüft, vom Spieler bestätigt“.
 - Stammdaten (Adresse Hofgut Boschach, 87724 Ottobeuren) aus Sekundärquellen, nicht verifiziert.
 
 Die Startdaten werden mit der Webspace-Edition ausgeliefert (`golfplaetze-daten.json`); bestehende Installationen

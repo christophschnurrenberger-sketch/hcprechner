@@ -104,7 +104,7 @@ export function CalculationDetails({ detail }: { detail: RoundDetail | { round: 
         <p className="font-medium text-ink">Verwendetes Rating</p>
         <p className="mt-1 text-ink-2">
           Par {round.rating.par ?? "–"} · Course Rating {formatDecimal(round.rating.courseRating)} · Slope {round.rating.slopeRating ?? "–"}
-          {round.rating.manual ? " · manuell von der Scorekarte" : round.rating.verified ? " · geprüft" : ""}
+          {round.rating.manual ? " · manuell von der Scorekarte" : round.rating.verified ? " · geprüft" : round.rating.playerConfirmed ? " · ungeprüft, von dir mit der Scorekarte bestätigt" : ""}
           {round.rating.sourceType && !round.rating.manual ? ` · Quelle: ${SOURCE_TYPE_LABELS[round.rating.sourceType] ?? round.rating.sourceType}` : ""}
         </p>
       </div>

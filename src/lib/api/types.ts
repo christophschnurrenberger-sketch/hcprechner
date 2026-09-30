@@ -53,7 +53,15 @@ export interface PublicSettings {
 // ---------------------------------------------------------------------------
 
 export type RoundCourseInput =
-  | { kind: "DB"; courseId: string; layoutId: string; teeColor: string; gender: Gender }
+  | {
+      kind: "DB";
+      courseId: string;
+      layoutId: string;
+      teeColor: string;
+      gender: Gender;
+      /** Nur bei ungeprüftem Rating: vom Spieler mit der Scorekarte bestätigte Werte (müssen exakt übereinstimmen). */
+      confirmRating?: ConfirmedRating;
+    }
   | {
       kind: "MANUAL";
       courseName: string;
@@ -72,6 +80,13 @@ export type RoundScoreInput =
   | { mode: "STABLEFORD_TOTAL"; points: number; playingHandicap?: number | null }
   | { mode: "STABLEFORD_HOLES"; points: (number | null)[]; playingHandicap?: number | null }
   | { mode: "DIFFERENTIAL"; scoreDifferential: number; officialHandicapIndexAfter?: number | null };
+
+/** Werte eines ungeprüften Ratings, die der Spieler mit seiner Scorekarte verglichen und bestätigt hat. */
+export interface ConfirmedRating {
+  par: number;
+  courseRating: number;
+  slopeRating: number;
+}
 
 export interface RoundInput {
   date: IsoDate;

@@ -111,6 +111,7 @@ components:
           - COURSE_NOT_FOUND
           - COURSE_RATING_MISSING
           - RATING_NOT_VERIFIED
+          - RATING_CHANGED
           - NINE_HOLE_RATING_MISSING
           - HOLE_DATA_MISSING
           - ROUND_NOT_FOUND
@@ -269,6 +270,20 @@ components:
                 enum:
                 - M
                 - F
+              confirmRating:
+                type: object
+                description: Nur bei ungeprüftem Rating – vom Spieler mit der Scorekarte bestätigte Werte; müssen exakt mit dem hinterlegten Rating übereinstimmen (sonst RATING_CHANGED).
+                required:
+                - par
+                - courseRating
+                - slopeRating
+                properties:
+                  par:
+                    type: integer
+                  courseRating:
+                    type: number
+                  slopeRating:
+                    type: integer
           - type: object
             required:
             - kind
@@ -797,7 +812,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/RoundSaveResult'
         '400':
-          description: VALIDATION, RATING_NOT_VERIFIED, NINE_HOLE_RATING_MISSING, COURSE_RATING_MISSING, HOLE_DATA_MISSING, ROUND_INVALID
+          description: VALIDATION, RATING_NOT_VERIFIED, RATING_CHANGED, NINE_HOLE_RATING_MISSING, COURSE_RATING_MISSING, HOLE_DATA_MISSING, ROUND_INVALID
   /api/me/rounds/preview:
     post:
       tags:

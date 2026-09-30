@@ -1,6 +1,6 @@
 # Abschluss-Check
 
-Stand: 29.09.2026 · Version 2.0.1 · **365 automatisierte Tests** (231 WHS-Engine, 46 Rechte/Sicherheit/Service-Schicht
+Stand: 30.09.2026 · Version 2.1.0 · **369 automatisierte Tests** (231 WHS-Engine, 46 Rechte/Sicherheit/Service-Schicht
 inkl. PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
 
 ## Version 2 – Frontend mit Mitgliederbereich und Admin-Backend (Master-Prompt)
@@ -9,7 +9,7 @@ inkl. PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (st
 
 Automatisiert mit Playwright (`e2e/flows.cjs`) gegen beide Editionen: Webspace-ZIP installiert unter `php -S`
 (PHP 8.4, Unterordner `/hcp`, Mail im Modus „Ablage“) und Node-Standalone-Server mit PGlite (`MAIL_MODE=outbox`).
-Ergebnis: **Webspace 61/61, Node 62/62 Prüfungen** (Node zusätzlich: fremde Runde per REST `GET /api/me/rounds/<id>`
+Ergebnis: **Webspace 63/63, Node 64/64 Prüfungen** (Stand 2.1.0) (Node zusätzlich: fremde Runde per REST `GET /api/me/rounds/<id>`
 → 404). Testdaten: ein fiktiver Testplatz („E2E Testclub“) nur in der Testinstallation.
 
 | Ablauf | Inhalt | Ergebnis |
@@ -25,6 +25,7 @@ Ergebnis: **Webspace 61/61, Node 62/62 Prüfungen** (Node zusätzlich: fremde Ru
 | I | fremde Daten: eigenes Dokument ohne fremde Runden; fremde Runde per ID lesen oder löschen → nicht gefunden | ✅ |
 | J | Smartphone 390 px: untere Navigation, Loch-für-Loch-Eingabe, keine horizontale Scrollleiste | ✅ |
 | K | Desktop 1440 px: Startseite, Admin mit Seitenleiste | ✅ |
+| – | Ungeprüftes Rating (Ottobeuren): Werte werden angezeigt und mit der Scorekarte bestätigt statt abgetippt; Löcher im Platz-Schritt umschaltbar (18 Loch / Loch 1–9 / Loch 10–18) mit Hinweis bei fehlendem 9-Loch-Rating | ✅ |
 | – | Runde bearbeiten/löschen, Entwurf automatisch gespeichert, Favorit, HCP-Seite mit Rechenweg, CSRF ohne Token abgelehnt, deaktiviertes Konto (Anmeldung abgelehnt, Sitzung beendet), Passwort vergessen, Abmelden, keine JavaScript-Fehler | ✅ |
 
 ### Sicherheit (§1, §156)
@@ -52,7 +53,8 @@ Ergebnis: **Webspace 61/61, Node 62/62 Prüfungen** (Node zusätzlich: fremde Ru
 | Getrennte Layouts für Öffentlich/Mitglied/Admin | ✅ `PublicShell`, `MemberShell`, `AdminShell` |
 | Mitglied: höchstens 5 Navigationspunkte, mobile Leiste unten, „+ Runde erfassen“ | ✅ |
 | Großer HCPI mit Veränderung, Ergebnisseite vorher/nachher | ✅ |
-| Wizard nur mit hinterlegten Abschlägen, GBE oder Loch für Loch, 9-Loch-Hinweis | ✅ |
+| Wizard nur mit hinterlegten Abschlägen, GBE oder Loch für Loch, 9-Loch-Hinweis | ✅ Lochzahl als erste Frage und im Platz-Schritt umschaltbar |
+| Ungeprüfte Ratings nicht automatisch verwenden | ✅ nur nach Bestätigung durch den Spieler (Werte müssen exakt übereinstimmen, sonst `RATING_CHANGED`); Snapshot `playerConfirmed` |
 | Rechenweg je Runde (Akkordeon), Bearbeiten, Löschen (Papierkorb), Entwürfe mit Autospeichern | ✅ |
 | Favoriten, Heimatplatz, zuletzt gespielt; Onboarding | ✅ |
 | Profil: Konto, Sicherheit (Passwort, E-Mail-Wechsel mit Bestätigung), Datenschutz (Export, Konto löschen), Abmelden | ✅ |

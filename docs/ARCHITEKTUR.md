@@ -162,7 +162,9 @@ Constraints in der Datenbank: Slope 55–155, Par 3–6 je Loch, `verified` nur 
 Driving Ranges können keine Layouts erhalten (Repository-Regel).
 
 Eine gespeicherte Runde enthält einen **Snapshot** des verwendeten Ratings (CR, Slope, Par, Abschlag, Layout, Quelle,
-Gültigkeit). Spätere Änderungen an den Platzdaten verändern historische Runden nicht. Die Rating-Auswahl im Wizard
+Gültigkeit). Ein ungeprüftes Rating wird nur übernommen, wenn der Spieler genau diese Werte im Assistenten mit seiner
+Scorekarte bestätigt hat (`confirmRating`, im Snapshot `playerConfirmed: true`); weichen die hinterlegten Werte
+inzwischen ab, lehnt das Backend mit `RATING_CHANGED` ab. Spätere Änderungen an den Platzdaten verändern historische Runden nicht. Die Rating-Auswahl im Wizard
 wählt das zum Spieldatum gültige Rating (`selectRatingSet`).
 
 ## Diagrammfarben
