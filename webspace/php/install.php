@@ -208,6 +208,7 @@ function htaccess_block($base, $minimal, $gate = true)
         $lines[] = '  AddType application/javascript .js .mjs';
         $lines[] = '  AddType text/css .css';
         $lines[] = '  AddType text/plain .txt';
+        $lines[] = '  AddType application/manifest+json .webmanifest';
         $lines[] = '  AddCharset utf-8 .html .js .css .txt .json';
         $lines[] = '</IfModule>';
         $lines[] = '<IfModule mod_headers.c>';

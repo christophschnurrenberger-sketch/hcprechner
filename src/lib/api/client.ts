@@ -32,6 +32,7 @@ import type {
   RoundDetail,
   RoundInput,
   RoundListItem,
+  RoundEntryMode,
   RoundPreview,
   RoundSaveResult,
   RulesInfo,
@@ -130,6 +131,8 @@ export interface MemberApi {
   courseLists(): Promise<MemberCourseLists>;
   setFavorite(courseId: string, favorite: boolean): Promise<MemberPreferences>;
   setHomeCourse(courseId: string | null): Promise<MemberPreferences>;
+  /** Standard der mobilen Rundeneingabe (Profil) */
+  setRoundEntryMode(mode: RoundEntryMode): Promise<MemberPreferences>;
   drafts(): Promise<DraftRound[]>;
   saveDraft(draft: { id: string; label: string; input: DraftRound["input"] }): Promise<DraftRound>;
   deleteDraft(id: string): Promise<void>;

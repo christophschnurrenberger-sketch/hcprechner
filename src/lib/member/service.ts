@@ -14,6 +14,7 @@ import { evaluateRound } from "@/lib/whs/roundCalculation";
 import { defaultRuleSet } from "@/rules/whs/registry";
 import { todayIso } from "@/lib/whs/dates";
 import type { HoleInfo, HoleScore, IsoDate, PccValue, Round, RoundEvaluation } from "@/lib/whs/types";
+import type { MemberRound } from "./round";
 import { activeRounds, withRound, withoutRound, type MemberDoc } from "./doc";
 import { previewRound, saveRound, scoringRecordOf, sequenceFor } from "./hcp";
 import { parseRoundInput, resolveRound, type CourseLookup } from "./roundInput";
@@ -24,12 +25,21 @@ export interface MemberContext {
   now?: Date;
 }
 
-async function buildRound(doc: MemberDoc, rawInput: unknown, ctx: MemberContext, roundId?: string): Promise<Round> {
+async function buildRound(doc: MemberDoc, rawInput: unknown, ctx: MemberContext, roundId?: string): Promise<MemberRound> {
   const input = parseRoundInput(rawInput);
   const existing = roundId ? doc.rounds.find((r) => r.id === roundId && r.status !== "DELETED") ?? null : null;
   if (roundId && !existing) throw apiError("ROUND_NOT_FOUND");
   const id = existing?.id ?? ctx.newId();
-  return resolveRound(input, ctx.courseLookup, { id, existing, sequence: sequenceFor(doc, { id, date: input.date }), now: ctx.now });
+  const round = await resolveRound(input, ctx.courseLookup, { id, existing, sequence: sequenceFor(doc, { id, date: input.date }), now: ctx.now });
+  return existing?.clientRef ? { ...round, clientRef: existing.clientRef } : round;
+}
+
+const CLIENT_REF = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Bereits aus diesem Entwurf gespeicherte Runde (idempotentes Speichern). */
+export function roundByClientRef(doc: MemberDoc, clientRef: string | null | undefined): MemberRound | null {
+  if (!clientRef) return null;
+  return doc.rounds.find((r) => r.clientRef === clientRef && r.status !== "DELETED") ?? null;
 }
 
 /** Vorschau („Dein Ergebnis“) – noch nicht gespeichert. */
@@ -37,11 +47,23 @@ export async function previewRoundInput(doc: MemberDoc, input: unknown, ctx: Mem
   return previewRound(doc, await buildRound(doc, input, ctx, roundId));
 }
 
-export async function createRound(doc: MemberDoc, input: unknown, ctx: MemberContext, draftId?: string | null): Promise<{ doc: MemberDoc; result: RoundSaveResult }> {
-  const round = await buildRound(doc, input, ctx);
+/**
+ * Neue Runde. Mit `draftId` ist das Speichern idempotent: Wurde aus diesem Entwurf schon eine Runde gespeichert
+ * (z. B. Anfrage nach einem Verbindungsabbruch wiederholt), entsteht keine zweite – geliefert wird das Ergebnis der
+ * vorhandenen Runde (`duplicate: true`, Dokument unverändert).
+ */
+export async function createRound(doc: MemberDoc, input: unknown, ctx: MemberContext, draftId?: string | null): Promise<{ doc: MemberDoc; result: RoundSaveResult; duplicate: boolean }> {
+  const clientRef = draftId && CLIENT_REF.test(draftId) ? draftId : null;
+  const existing = roundByClientRef(doc, clientRef);
+  if (existing) {
+    const without = { ...doc, rounds: doc.rounds.filter((r) => r.id !== existing.id) };
+    return { doc, result: { ...previewRound(without, existing), roundId: existing.id }, duplicate: true };
+  }
+  const built = await buildRound(doc, input, ctx);
+  const round = clientRef ? { ...built, clientRef } : built;
   const saved = saveRound(doc, round);
   const next = draftId ? { ...saved.doc, drafts: saved.doc.drafts.filter((d) => d.id !== draftId) } : saved.doc;
-  return { doc: next, result: { ...saved.preview, roundId: round.id } };
+  return { doc: next, result: { ...saved.preview, roundId: round.id }, duplicate: false };
 }
 
 /** Änderung einer bestehenden Runde – der gesamte Verlauf wird chronologisch neu berechnet. */
@@ -105,6 +127,12 @@ export function setFavorite(doc: MemberDoc, courseId: string, favorite: boolean)
 
 export function setHomeCourse(doc: MemberDoc, courseId: string | null): MemberDoc {
   return { ...doc, preferences: { ...doc.preferences, homeCourseId: courseId } };
+}
+
+/** Standard der Rundeneingabe auf dem Smartphone: schnell, detailliert oder bei jeder Runde fragen. */
+export function setRoundEntryMode(doc: MemberDoc, mode: unknown): MemberDoc {
+  if (mode !== "ASK" && mode !== "QUICK" && mode !== "DETAILED") throw apiError("VALIDATION", "Ungültige Auswahl.", { roundEntryMode: "Bitte eine Option wählen." });
+  return { ...doc, preferences: { ...doc.preferences, roundEntryMode: mode } };
 }
 
 /** Zuletzt gespielte Plätze aus der Datenbank (neueste zuerst, ohne Doppelte). */

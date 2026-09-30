@@ -1,8 +1,37 @@
 # Abschluss-Check
 
-Stand: 30.09.2026 · Version 2.2.0 · **427 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
-Statistik, Community, Parität TypeScript ↔ PHP, Node-API mit PGlite und PHP-API gegen `php -S`), ESLint und TypeScript
-ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
+Stand: 30.09.2026 · Version 2.3.0 · **439 automatisierte Tests** (231 WHS-Engine; Rechte, Sicherheit, Service-Schicht,
+Statistik, Community, Ablauf der mobilen Scorecard, idempotentes Speichern, Parität TypeScript ↔ PHP, Node-API mit PGlite
+und PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build (standalone) und Webspace-ZIP erfolgreich.
+
+## Version 2.3 – Mobile Rundeneingabe als eigenständige Scorecard (Master-Prompt, Definition of Done §161)
+
+Browser-Abläufe (`e2e/flows.cjs`, Abschnitt J neu) gegen beide Editionen: **Node 100/100** und **Webspace 99/99** (ZIP
+installiert auf dem IONOS-ähnlichen Apache). Konzept: [`MOBILE-RUNDENEINGABE.md`](MOBILE-RUNDENEINGABE.md).
+
+| Punkt | Status | Nachweis |
+|---|---|---|
+| Mobile Scorecard komplett neu (keine responsive Desktop-Tabelle) | ✅ | eigene Komponenten `src/components/member/mobile/`; Desktop-Eingabe unverändert |
+| Wizard funktioniert (Start → Score → Putts → Statistik → nächstes Loch) | ✅ | `holeFlow.ts` + Tests; E2E 18 Loch |
+| Quick Mode / Detailed Mode | ✅ | Auswahl beim Start, Standard im Profil; E2E beide Modi |
+| 9 Loch / 18 Loch (Front Nine, Übersicht nach Loch 9 bzw. 18) | ✅ | E2E 9 Loch schnell, 18 Loch detailliert mit Front-Nine-Zwischenstand |
+| Score, Putts, FIR (nur Par 4/5), GIR, Bunker, Sand Save (nur nach Bunker), Up & Down (nur bei verfehltem Grün), Strafschläge (Standard 0), Notiz (optional, privat) | ✅ | `screens.tsx`, sichere Folgerungen in `normalizeHole`; E2E: Par 3 ohne Fairway-Frage, Bunker mit Sand Save |
+| Auto Save / Offline-Entwurf / Sync | ✅ | jede Eingabe lokal, Server-Entwurf kurz danach, Statusanzeige; E2E Funkloch |
+| Recovery | ✅ | „Du hast eine laufende Runde … Loch 6 von 9“; E2E nach Reload fortgesetzt an der richtigen Stelle |
+| Keine Duplikate | ✅ | `clientRef` (Service, Node, PHP); Unit- und PHP-Tests; E2E offline beendet → genau eine Runde mehr |
+| Back-Navigation, Loch bearbeiten | ✅ | ← behält Daten (E2E), Lochleiste und Übersicht zum Springen |
+| Abbrechen ohne Datenverlust | ✅ | X: Weiter erfassen / Als Entwurf speichern / Runde verlassen; Verwerfen nur nach Rückfrage (E2E) |
+| Front Nine Summary, Final Summary | ✅ | Schläge, zu Par, Putts, GIR, FIR; Löcher antippbar |
+| WHS-Berechnung und Score Differential unverändert | ✅ | keine Änderung an Engine/Regeln; Ergebnis kommt vom Backend (E2E: SD 7,7, HCPI 13,6 → 9,7); 231 Engine-Tests grün |
+| Ranking nach Abschluss aktualisiert, Community unverändert | ✅ | Backend-Synchronisation wie bisher; Ergebnisbildschirm zeigt den Ranking-Platz; Abschnitt L grün |
+| Desktop funktional, Tablet (hoch = Scorecard, quer = Desktop) | ✅ | Abläufe A–K unverändert grün; E2E Tablet 768 × 1024 / 1024 × 768 |
+| Accessibility | ✅ | Buttons mit `aria-label`/`aria-pressed`, Gruppen mit Überschrift, `aria-live` für Schlagzahl und Status, Tastatur, Kontrast, Symbol + Text statt nur Farbe, reduzierte Bewegung |
+| Touch-Ziele ≥ 44–48 px, kein unnötiges Scrollen, kleine Smartphones | ✅ | E2E: 18 Löcher ohne Scrollen (390 × 844), Schritte ohne Scrollen auf 375 × 667 |
+| „Statistiken ergänzen“ nach Quick-Runde | ✅ | gleiche Schritte, Schläge gesperrt; E2E |
+| PWA, Vollbild, Screen Wake Lock, Haptik | ✅ | Manifest + Icons, Scorekarte als Vollbild, Wake Lock/Vibration wo unterstützt (sonst still) |
+
+**Bewusste Grenze:** Kein Service Worker. Eine laufende Runde arbeitet offline weiter und geht nicht verloren; die App
+ohne jede Verbindung neu zu öffnen, ist nicht möglich (Anmeldung und Platzdaten brauchen das Netz).
 
 ## Version 2.2 – Community, Ranking, Mitgliederprofile und Lochstatistik (Master-Prompt, Checkliste §172)
 

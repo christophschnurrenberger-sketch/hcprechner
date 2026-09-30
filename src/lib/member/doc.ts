@@ -62,8 +62,9 @@ const docSchema = z.object({
       favorites: z.array(z.string()).default([]),
       homeCourseId: z.string().nullable().default(null),
       onboardedAt: z.string().nullable().default(null),
+      roundEntryMode: z.enum(["ASK", "QUICK", "DETAILED"]).default("ASK"),
     })
-    .default({ favorites: [], homeCourseId: null, onboardedAt: null }),
+    .default({ favorites: [], homeCourseId: null, onboardedAt: null, roundEntryMode: "ASK" }),
   community: communitySchema.default(defaultCommunitySettings()),
   summary: summarySchema.nullable().optional(),
 });
@@ -77,7 +78,7 @@ export function emptyMemberDoc(userId: string, startHandicapIndex = 54): MemberD
     profile: defaultMemberProfile(userId, startHandicapIndex),
     rounds: [],
     drafts: [],
-    preferences: { favorites: [], homeCourseId: null, onboardedAt: null },
+    preferences: { favorites: [], homeCourseId: null, onboardedAt: null, roundEntryMode: "ASK" },
     community: defaultCommunitySettings(),
     summary: null,
   };
@@ -100,6 +101,11 @@ export function normalizeMemberDoc(raw: unknown, userId: string): MemberDoc {
     community: parsed.community as CommunitySettings,
     summary: (parsed.summary ?? null) as MemberSummary | null,
   };
+}
+
+/** Vorlieben für die Oberfläche (ohne interne Felder). */
+export function publicPreferences(doc: Pick<MemberDoc, "preferences">): MemberPreferences {
+  return { favorites: doc.preferences.favorites, homeCourseId: doc.preferences.homeCourseId, roundEntryMode: doc.preferences.roundEntryMode ?? "ASK" };
 }
 
 /** Runden, die in die Berechnung eingehen (gelöschte bleiben gespeichert, zählen aber nicht). */

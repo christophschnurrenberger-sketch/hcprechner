@@ -12,6 +12,8 @@ import { HcpHero } from "@/components/member/HcpHero";
 import { HcpHistoryChart } from "@/components/member/HcpHistoryChart";
 import { DraftList, roundHref, roundStatsHref } from "@/components/member/RoundList";
 import { useSession } from "@/components/session/SessionProvider";
+import { ActiveRoundBanner } from "@/components/member/mobile/RoundSyncAgent";
+import { useLocalActiveRound } from "@/components/member/mobile/hooks";
 import { Trend } from "@/components/community/CommunityViews";
 import { formatPercent } from "@/components/stats/StatsUi";
 import type { DashboardData } from "@/lib/api/types";
@@ -70,7 +72,8 @@ function LastStatsCard({ last }: { last: NonNullable<DashboardData["lastStats"]>
 export function DashboardPage() {
   const params = useSearchParams();
   const toast = useToast();
-  const { settings } = useSession();
+  const { settings, user } = useSession();
+  const activeRound = useLocalActiveRound(user?.id);
   const { data, error, loading, reload, setData } = useApi(() => api.member.dashboard(), "dashboard");
 
   if (error && !data) return <ErrorState error={error} onRetry={reload} />;
@@ -87,10 +90,12 @@ export function DashboardPage() {
         <p className="mt-0.5 text-sm text-ink-3">{data.roundsCount === 0 ? "Schön, dass du da bist. Erfasse deine erste Runde." : `${data.roundsCount} ${data.roundsCount === 1 ? "Runde" : "Runden"} erfasst`}</p>
       </div>
 
+      {activeRound && <ActiveRoundBanner round={activeRound} />}
+
       <HcpHero hcp={hcp} />
 
       <DraftList
-        drafts={drafts}
+        drafts={activeRound ? drafts.filter((d) => d.id !== activeRound.draftId) : drafts}
         onDelete={async (id) => {
           try {
             await api.member.deleteDraft(id);

@@ -15,7 +15,8 @@ src/lib/auth/            Rollen und Berechtigungen (permissions.ts), Formularval
 src/lib/courses/         Platzdaten-Logik: Rating-Auswahl, Suche, Duplikate, CSV, Qualität, Validierung,
                          JSON-Datensatz-Operationen (dataset.ts), Datenzugriff im Browser (client.ts)
 src/lib/importer/        Parser der BGV-Clubübersicht (Discovery)
-src/lib/rounds/          Wizard-Formularzustand → unveränderliche Runde
+src/lib/rounds/          Wizard-Formularzustand → unveränderliche Runde; holeFlow.ts = Ablauf der mobilen Scorecard
+                         (Schritte, Relevanz der Fragen, sichere Folgerungen, Summen – ohne WHS-Berechnung)
 src/lib/export/          CSV/PDF-Export, Runden-CSV-Import
 src/lib/runtime.ts       Build-Variante (node | webspace), Basispfad
 src/db/                  Drizzle-Schema, Client (PostgreSQL oder PGlite)
@@ -26,7 +27,9 @@ src/proxy.server.ts      Node: leitet /member und /admin ohne Sitzungs-Cookie zu
 src/app/(public)/        öffentliche Seiten und Anmeldung
 src/app/member/          Mitgliederbereich (Layout: MemberShell)
 src/app/admin/           Admin-Bereich (Layout: AdminShell); (courses)/ = Golfplatzverwaltung
-src/components/          UI: layout/ (Shells), session/, ui/ (Feedback, Dialoge), auth/, member/, admin/, courses/
+src/components/          UI: layout/ (Shells), session/, ui/ (Feedback, Dialoge), auth/, member/, admin/, courses/;
+                         member/mobile/ = eigenständige mobile Scorecard (Smartphone, Tablet hochkant), siehe
+                         docs/MOBILE-RUNDENEINGABE.md – gleiche API und Eingabe wie member/wizard/ (Desktop)
 webspace/php/            install.php, gate.php, api/*.php (auth, me, community, admin, courses; _community.php =
                          PHP-Fassung der Projektion, per Paritätstest abgeglichen), Schutzdateien
 data/seed/               mitgelieferte Golfplatz-Startdaten (JSON-Datensatz)

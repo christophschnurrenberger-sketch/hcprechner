@@ -622,7 +622,7 @@ async function waitPath(page, re, timeout = 15000) {
   await waitPath(u, /\/login/);
   check("Nach Passwort-Reset: alte Sitzung beendet", true);
 
-  // ---------------------------------------------------------------- J: Smartphone
+  // ---------------------------------------------------------------- J: Smartphone – mobile Scorecard (eigene UI, kein verkleinertes Formular)
   const mobileCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const m = await mobileCtx.newPage();
   watch(m, "mobile");
@@ -634,25 +634,196 @@ async function waitPath(page, re, timeout = 15000) {
   const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check("J: Smartphone – keine horizontale Scrollleiste", overflow <= 1, `${overflow}px`);
   await m.screenshot({ path: `${SHOTS}/30-mobile-dashboard.png` });
+
+  const scard = m.locator("[data-mobile-scorecard]");
+  const btn = (name) => scard.getByRole("button", { name, exact: true });
+  /** Passt der aktuelle Schritt ohne vertikales Scrollen auf den Bildschirm? */
+  const scrollOf = () => m.evaluate(() => {
+    const main = document.querySelector("[data-mobile-scorecard] main");
+    return main ? main.scrollHeight - main.clientHeight : 999;
+  });
+  let maxScroll = 0;
+  const measure = async () => (maxScroll = Math.max(maxScroll, await scrollOf()));
+
+  // Start: Heimatplatz vorgeschlagen, nur Platz, Löcher, Abschlag, Erfassungsart
   await m.click('a[aria-label="Runde erfassen"]');
-  await m.waitForSelector("text=Wann hast du gespielt?");
-  await m.getByRole("button", { name: "Weiter", exact: true }).click();
-  await m.click("button:has-text('E2E Testclub (fiktiv)') >> nth=0");
-  await m.getByRole("radio", { name: /Gelb/ }).first().click();
-  await m.getByRole("button", { name: "Weiter", exact: true }).click();
-  await m.getByRole("radio", { name: /Loch für Loch/ }).click();
-  await m.screenshot({ path: `${SHOTS}/31-mobile-scorecard.png` });
-  check("J: Smartphone – Loch-für-Loch-Eingabe", await m.locator("text=Loch 1").first().isVisible());
-  await m.getByRole("switch", { name: /Runde detailliert tracken/ }).check();
-  await m.getByRole("group", { name: "Putts", exact: true }).getByRole("button", { name: "2", exact: true }).click();
-  const overflowCard = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  await m.screenshot({ path: `${SHOTS}/32-mobile-detailed.png`, fullPage: true });
-  check("J: Smartphone – detaillierte Scorecard ohne horizontale Scrollleiste", overflowCard <= 1 && (await m.getByRole("progressbar").isVisible()), `${overflowCard}px`);
-  await m.goto(`${BASE}/member/community/`);
-  await m.waitForSelector("text=Deine Position");
-  const overflowCm = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  check("J: Smartphone – Community (Ranking als Karten)", overflowCm <= 1 && (await m.locator('nav[aria-label="Mitgliederbereich"]').last().locator("text=Community").isVisible()), `${overflowCm}px`);
-  await m.screenshot({ path: `${SHOTS}/33-mobile-community.png`, fullPage: true });
+  await scard.waitFor();
+  await m.waitForSelector("text=Wie möchtest du deine Runde erfassen?");
+  const setupText = await scard.innerText();
+  check("J: Rundenstart – Heimatplatz vorgeschlagen, keine CR/Slope/PCC-Felder", setupText.includes("E2E Testclub (fiktiv)") && !/Course Rating|Slope|PCC/.test(setupText), setupText.replace(/\s+/g, " ").slice(0, 160));
+  await scard.getByRole("button", { name: /Gelb/ }).first().click();
+  await scard.getByRole("button", { name: /Detailliert/ }).click();
+  await m.screenshot({ path: `${SHOTS}/31-mobile-start.png` });
+  await btn("Runde starten").click();
+
+  // 18 Loch, detailliert: Score → Putts (automatisch weiter) → nur relevante Statistik (automatisch weiter)
+  const t0 = Date.now();
+  let backOk = false;
+  let parThreeNoFir = true;
+  for (let i = 0; i < 18; i++) {
+    const par = pars[i];
+    const score = i % 2 === 1 ? par + 1 : par;
+    await scard.getByRole("heading", { name: `Loch ${i + 1}`, exact: true }).waitFor();
+    await measure();
+    if (i === 0) await m.screenshot({ path: `${SHOTS}/32-mobile-score.png` });
+    await scard.getByRole("button", { name: new RegExp(`^${score} Schläge`) }).click();
+    await btn("Weiter").click();
+    await scard.getByText("Wie viele Putts?").waitFor();
+    await measure();
+    if (i === 0) await m.screenshot({ path: `${SHOTS}/33-mobile-putts.png` });
+    await scard.getByRole("button", { name: "2 Putts" }).click();
+    await scard.getByText(par >= 4 ? "Fairway getroffen?" : "Grün in Regulation?").waitFor();
+    await measure();
+    if (par === 3 && (await scard.getByText("Fairway getroffen?").count()) > 0) parThreeNoFir = false;
+    if (par >= 4) await scard.getByRole("group", { name: "Fairway getroffen?" }).getByRole("button", { name: "Getroffen" }).click();
+    if (i === 4) {
+      // Zurück behält die Eingaben
+      await m.getByRole("button", { name: "Zurück", exact: true }).click();
+      await scard.getByText("Wie viele Putts?").waitFor();
+      backOk = (await scard.getByRole("button", { name: "2 Putts" }).getAttribute("aria-pressed")) === "true";
+      await btn("Weiter").click();
+      await scard.getByText("Grün in Regulation?").waitFor();
+    }
+    if (i === 2) {
+      // Bunker über „Weitere Statistiken“ (Par 3, Par gespielt → Sand Save wird gefragt)
+      await scard.getByRole("button", { name: /Weitere Statistiken/ }).click();
+      await scard.getByRole("group", { name: "Im Bunker?" }).getByRole("button", { name: "Ja" }).click();
+      await scard.getByRole("group", { name: "Sand Save?" }).getByRole("button", { name: "Ja" }).click();
+      await m.screenshot({ path: `${SHOTS}/34-mobile-stats-more.png` });
+    }
+    const gir = score === par ? "Ja" : "Nein";
+    await scard.getByRole("group", { name: "Grün in Regulation?" }).getByRole("button", { name: gir }).click();
+    if (i === 0) await m.screenshot({ path: `${SHOTS}/35-mobile-stats.png` });
+    if (i === 2) await btn("Nächstes Loch").click();
+    if (i === 8) {
+      await m.waitForSelector("text=Front Nine geschafft");
+      await measure();
+      const front = await scard.innerText();
+      check("J: Front-Nine-Zwischenstand (Schläge, Putts, GIR, FIR)", /Putts/.test(front) && /GIR/.test(front) && /FIR/.test(front), front.replace(/\s+/g, " ").slice(0, 120));
+      await m.screenshot({ path: `${SHOTS}/36-mobile-front-nine.png` });
+      await btn("Back Nine starten").click();
+    }
+  }
+  await m.waitForSelector("text=Runde geschafft");
+  await measure();
+  const finalText = await scard.innerText();
+  const expected = pars.reduce((a, p, i) => a + (i % 2 === 1 ? p + 1 : p), 0);
+  check("J: 18 Loch detailliert – Übersicht mit Summe", finalText.includes(String(expected)) && finalText.includes("+9"), finalText.replace(/\s+/g, " ").slice(0, 120));
+  check("J: Par 3 ohne Fairway-Frage, Zurück behält Daten", parThreeNoFir && backOk);
+  await m.screenshot({ path: `${SHOTS}/37-mobile-final.png` });
+  await btn("Runde beenden").click();
+  await m.waitForSelector("text=Runde gespeichert.", { timeout: 20000 });
+  const resultText = await scard.innerText();
+  check("J: Ergebnis vom Backend (Score Differential, HCPI, Statistik)", /Score Differential/.test(resultText) && /Handicap Index/.test(resultText) && /Putts\s*36/.test(resultText), resultText.replace(/\s+/g, " ").slice(0, 200));
+  check(`J: Loch 1–18 ohne Scrollen bedienbar (390×844)`, maxScroll <= 2, `max. ${maxScroll}px, ${Math.round((Date.now() - t0) / 1000)} s für 18 Löcher`);
+  await m.screenshot({ path: `${SHOTS}/38-mobile-result.png` });
+
+  // 9 Loch schnell, Funkloch, Wiederaufnahme, Offline-Abschluss ohne doppelte Runde
+  const countRounds = async () => {
+    const r = await call(m, EDITION === "webspace" ? "/api/me.php?action=load" : "/api/me/rounds", "GET", undefined, false);
+    return EDITION === "webspace" ? (r.json?.doc?.rounds ?? []).filter((x) => x.status !== "DELETED").length : (r.json ?? []).length;
+  };
+  const before = await countRounds();
+  await m.goto(`${BASE}/member/rounds/new/`);
+  await scard.waitFor();
+  await m.waitForSelector("text=Wie möchtest du deine Runde erfassen?");
+  await scard.getByRole("button", { name: "Loch 1–9" }).click();
+  await scard.getByRole("button", { name: /Gelb/ }).first().click();
+  await scard.getByRole("button", { name: /Schnell/ }).click();
+  await btn("Runde starten").click();
+  const quickScore = async (i, v) => {
+    await scard.getByRole("heading", { name: `Loch ${i + 1}`, exact: true }).waitFor();
+    await scard.getByRole("button", { name: new RegExp(`^${v} Schläge`) }).click();
+    await btn(i === 8 ? "Runde abschließen" : "Nächstes Loch").click();
+  };
+  await quickScore(0, pars[0]);
+  await m.waitForTimeout(1500); // Entwurf erreicht den Server
+  await mobileCtx.setOffline(true);
+  const offlineBanner = await visible(m.locator("text=Offline – deine Runde wird lokal gespeichert."), 5000);
+  for (let i = 1; i < 5; i++) await quickScore(i, pars[i] + 1);
+  check("J: Offline weiter erfassen (Hinweis, lokal gespeichert)", offlineBanner && (await visible(m.locator("text=Loch 6"), 3000)));
+  await mobileCtx.setOffline(false);
+  await m.reload();
+  await m.waitForSelector("text=Du hast eine laufende Runde.", { timeout: 15000 });
+  const resumeText = await m.locator("body").innerText();
+  check("J: Wiederaufnahme nach Schließen – „Loch 6 von 9“", resumeText.includes("Loch 6 von 9"), resumeText.replace(/\s+/g, " ").slice(0, 120));
+  await m.getByRole("button", { name: "Fortsetzen", exact: true }).click();
+  await m.waitForSelector("text=Wie viele Schläge?");
+  check("J: Fortsetzen an der richtigen Stelle", (await scard.getByRole("heading", { level: 1 }).innerText()).includes("Loch 6"));
+  await mobileCtx.setOffline(true);
+  for (let i = 5; i < 9; i++) await quickScore(i, pars[i]);
+  await m.waitForSelector("text=9 Loch geschafft");
+  await btn("Runde beenden").click();
+  await m.waitForSelector("text=Noch nicht synchronisiert", { timeout: 10000 });
+  check("J: Offline abgeschlossen – verständlicher Hinweis, sicher auf dem Gerät", await visible(m.locator("text=/sicher auf deinem Gerät gespeichert/"), 3000));
+  await mobileCtx.setOffline(false);
+  await m.waitForSelector("text=Runde gespeichert.", { timeout: 20000 });
+  const quickResult = await scard.innerText();
+  await m.goto(`${BASE}/member/`);
+  await m.waitForSelector("text=Hallo Max!");
+  await m.waitForTimeout(1200);
+  const after = await countRounds();
+  check("J: Nach Verbindung synchronisiert – genau eine Runde mehr", after === before + 1, `${before} → ${after}`);
+  check("J: Keine laufende Runde mehr auf dem Dashboard", !(await visible(m.locator("text=Du hast eine laufende Runde"), 1500)));
+
+  // Statistiken nachträglich ergänzen (gleiche Schritte, Schläge gesperrt)
+  const quickId = await m.evaluate(async (ed) => {
+    const r = await fetch(ed.url).then((x) => x.json());
+    const list = ed.webspace ? r.doc.rounds.filter((x) => x.status !== "DELETED") : r;
+    return list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))[0]?.id ?? null;
+  }, { url: BASE + (EDITION === "webspace" ? "/api/me.php?action=load" : "/api/me/rounds"), webspace: EDITION === "webspace" });
+  await m.goto(`${BASE}/member/rounds/stats/?id=${encodeURIComponent(quickId)}`);
+  await m.waitForSelector("text=Wie viele Putts?");
+  await m.getByRole("button", { name: "2 Putts" }).click();
+  await m.getByText("Fairway getroffen?").waitFor();
+  await m.getByRole("group", { name: "Fairway getroffen?" }).getByRole("button", { name: "Verfehlt" }).click();
+  await m.getByRole("group", { name: "Grün in Regulation?" }).getByRole("button", { name: "Nein" }).click();
+  await m.getByRole("group", { name: "Up & Down geschafft?" }).getByRole("button", { name: "Ja" }).click();
+  await m.waitForSelector("text=Statistik · Loch 2");
+  await m.getByRole("button", { name: "Übersicht der Runde" }).click();
+  await m.getByRole("button", { name: "Statistik speichern" }).click();
+  await m.waitForSelector("text=Statistik dieser Runde", { timeout: 20000 });
+  check("J: Statistik ergänzen – Schritt für Schritt, gespeichert", quickResult.includes("Runde gespeichert.") && (await visible(m.locator("text=/1 von 1 Versuchen/").first(), 5000)));
+
+  // Tablet: hoch = mobile Scorecard, quer = Desktop-Eingabe; kleines Smartphone
+  const tablet = await browser.newContext({ viewport: { width: 768, height: 1024 }, isMobile: true, hasTouch: true });
+  const tp = await tablet.newPage();
+  await login(tp, "max@example.de", "Max-Neu-Passwort-1");
+  await waitPath(tp, /\/member/);
+  await tp.goto(`${BASE}/member/rounds/new/`);
+  check("J: Tablet hochkant – mobile Scorecard", await visible(tp.locator("[data-mobile-scorecard]"), 10000));
+  await tp.setViewportSize({ width: 1024, height: 768 });
+  check("J: Tablet quer – Desktop-Eingabe", await visible(tp.locator("text=Wie viele Löcher hast du gespielt?"), 10000));
+  await tablet.close();
+  const small = await browser.newContext({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const sp = await small.newPage();
+  watch(sp, "small");
+  await login(sp, "max@example.de", "Max-Neu-Passwort-1");
+  await waitPath(sp, /\/member/);
+  await sp.goto(`${BASE}/member/rounds/new/`);
+  await sp.waitForSelector("text=Wie möchtest du deine Runde erfassen?");
+  await sp.locator("[data-mobile-scorecard]").getByRole("button", { name: /Gelb/ }).first().click();
+  await sp.locator("[data-mobile-scorecard]").getByRole("button", { name: /Detailliert/ }).click();
+  await sp.locator("[data-mobile-scorecard]").getByRole("button", { name: "Runde starten", exact: true }).click();
+  await sp.waitForSelector("text=Wie viele Schläge?");
+  const smallScroll = [];
+  const sScroll = () => sp.evaluate(() => { const el = document.querySelector("[data-mobile-scorecard] main"); return el ? el.scrollHeight - el.clientHeight : 999; });
+  smallScroll.push(await sScroll());
+  await sp.locator("[data-mobile-scorecard]").getByRole("button", { name: /^5 Schläge/ }).click();
+  await sp.locator("[data-mobile-scorecard]").getByRole("button", { name: "Weiter", exact: true }).click();
+  await sp.waitForSelector("text=Wie viele Putts?");
+  smallScroll.push(await sScroll());
+  await sp.getByRole("button", { name: "2 Putts" }).click();
+  await sp.waitForSelector("text=Fairway getroffen?");
+  smallScroll.push(await sScroll());
+  await sp.screenshot({ path: `${SHOTS}/39-small-phone-stats.png` });
+  check("J: Kleines Smartphone (375×667) – Schritte ohne Scrollen", smallScroll.every((x) => x <= 2), smallScroll.join("/"));
+  // laufende Runde verwerfen (keine Daten verlieren ohne Rückfrage)
+  await sp.getByRole("button", { name: "Runde verlassen" }).click();
+  await sp.getByRole("button", { name: "Runde verwerfen …" }).click();
+  await sp.getByRole("button", { name: "Ja, verwerfen" }).click();
+  await waitPath(sp, /^\/member\/?$/);
+  await small.close();
 
   // ---------------------------------------------------------------- K: Desktop
   await login(u, "max@example.de", "Max-Neu-Passwort-1");

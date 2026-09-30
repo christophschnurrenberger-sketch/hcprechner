@@ -27,6 +27,8 @@ const holeScore = z.union([z.number(), z.literal("PICKUP"), z.null()]);
 
 export const roundSchema = z.object({
   id: z.string().min(1),
+  /** Kennung des Entwurfs, aus dem die Runde entstand – macht das Speichern idempotent (keine Doppel bei Wiederholung) */
+  clientRef: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
   date: isoDate,
   sequence: z.number().int().min(0),
   title: z.string(),

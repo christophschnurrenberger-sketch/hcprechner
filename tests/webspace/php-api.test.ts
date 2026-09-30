@@ -172,6 +172,30 @@ describe.skipIf(!hasPhp)("Webspace-Backend (PHP)", () => {
     expect((await max.req("/api/me.php?action=round-save", { body: { round: { id: "../../x" } } })).json?.error).toBe("ROUND_INVALID");
   });
 
+  it("Idempotentes Speichern: gleiche Entwurfs-Kennung erzeugt keine zweite Runde; Einstellung Rundeneingabe", async () => {
+    const before = ((await max.req("/api/me.php?action=load")).json?.doc as { rounds: unknown[] }).rounds.length;
+    const first = await max.req("/api/me.php?action=round-save", { body: { round: { ...round("r-offline-1"), clientRef: "draft-offline-1" } } });
+    expect(first.json?.duplicate).toBeUndefined();
+    const retry = await max.req("/api/me.php?action=round-save", { body: { round: { ...round("r-offline-2"), clientRef: "draft-offline-1" } } });
+    expect(retry.status).toBe(200);
+    expect(retry.json?.duplicate).toBe(true);
+    expect(retry.json?.roundId).toBe("r-offline-1");
+    const doc = (await max.req("/api/me.php?action=load")).json?.doc as { rounds: { id: string; clientRef?: string }[]; preferences: { roundEntryMode?: string } };
+    expect(doc.rounds).toHaveLength(before + 1);
+    expect(doc.rounds.find((r) => r.id === "r-offline-1")?.clientRef).toBe("draft-offline-1");
+    // ungültige Kennung wird verworfen
+    await max.req("/api/me.php?action=round-save", { body: { round: { ...round("r-offline-3"), clientRef: "../x" } } });
+    const doc2 = (await max.req("/api/me.php?action=load")).json?.doc as { rounds: { id: string; clientRef?: string }[] };
+    expect(doc2.rounds.find((r) => r.id === "r-offline-3")?.clientRef).toBeUndefined();
+    await max.req("/api/me.php?action=round-delete", { body: { id: "r-offline-3" } });
+    await max.req("/api/me.php?action=round-delete", { body: { id: "r-offline-1" } });
+    // Einstellung Rundeneingabe
+    await max.req("/api/me.php?action=prefs-save", { body: { preferences: { favorites: [], homeCourseId: null, roundEntryMode: "DETAILED" } } });
+    expect(((await max.req("/api/me.php?action=load")).json?.doc as { preferences: { roundEntryMode: string } }).preferences.roundEntryMode).toBe("DETAILED");
+    await max.req("/api/me.php?action=prefs-save", { body: { preferences: { favorites: [], homeCourseId: null, roundEntryMode: "ROOT" } } });
+    expect(((await max.req("/api/me.php?action=load")).json?.doc as { preferences: { roundEntryMode: string } }).preferences.roundEntryMode).toBe("DETAILED");
+  });
+
   it("Datentrennung: ein anderes Mitglied sieht und ändert keine fremden Runden", async () => {
     await admin.req("/api/admin.php?action=user-create", { body: { firstName: "Erika", lastName: "Beispiel", email: "erika@example.de", role: "USER", password: "Start-Passwort-1" } });
     const login = await erika.login("erika@example.de", "Start-Passwort-1");

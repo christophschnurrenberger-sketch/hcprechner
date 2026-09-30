@@ -15,6 +15,8 @@ export const metadata: Metadata = {
   description:
     "Dein Handicap Index nach World Handicap System und DGV-Regeln 2026: Runden erfassen, Score Differentials, 9-Loch-Berechnung, Golfplatzdatenbank Bayern.",
   applicationName: "Golf HCP Rechner – WHS 2026",
+  // „Zum Home-Bildschirm“ auf dem iPhone: eigenständig, ohne Browserleiste (Scorekarte auf dem Platz)
+  appleWebApp: { capable: true, title: "HCP Rechner", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

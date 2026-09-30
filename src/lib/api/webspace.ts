@@ -16,7 +16,7 @@ import { memberSummary, performanceOf, saveRoundStats, setRoundVisibility } from
 import { roundInsights } from "@/lib/stats/insights";
 import { ratesFromSums, type StatSums } from "@/lib/stats/aggregate";
 import type { AdminCommunityOverview, MyCommunity, PublicRoundView } from "@/lib/community/types";
-import { normalizeMemberDoc, type MemberDoc } from "@/lib/member/doc";
+import { normalizeMemberDoc, publicPreferences, type MemberDoc } from "@/lib/member/doc";
 import { APP_VERSION, BUILD_INFO } from "@/lib/member/engine";
 import { computeHcp, dashboardData, listRounds, roundDetail } from "@/lib/member/hcp";
 import { rulesInfo } from "@/lib/member/rules";
@@ -32,6 +32,7 @@ import {
   saveDraft,
   setFavorite,
   setHomeCourse,
+  setRoundEntryMode,
   setStartHandicap,
   simulateDifferential,
   statistics,
@@ -170,7 +171,7 @@ const ctx = (): MemberContext => ({
 async function profileData(doc: MemberDoc): Promise<MemberProfileData> {
   const me = await auth.me();
   if (!me.user) throw new ApiError("UNAUTHENTICATED", undefined, 401);
-  return { user: me.user, profile: doc.profile, preferences: { favorites: doc.preferences.favorites, homeCourseId: doc.preferences.homeCourseId } };
+  return { user: me.user, profile: doc.profile, preferences: publicPreferences(doc) };
 }
 
 async function savePrefs(doc: MemberDoc, withSummary = false): Promise<number> {
@@ -192,8 +193,16 @@ const member: MemberApi = {
   createRound: (input, draftId) =>
     withRetry(async ({ doc, revision }) => {
       const r = await createRound(doc, input, ctx(), draftId);
+      // bereits gespeichert (wiederholte Anfrage nach Verbindungsabbruch) → nichts erneut senden
+      if (r.duplicate) return r.result;
       const round = r.doc.rounds.find((x) => x.id === r.result.roundId);
-      const res = await php<{ revision: number }>("me", "round-save", { body: { round, draftId: draftId ?? null, baseRevision: revision, summary: summaryOf(r.doc) } });
+      const res = await php<{ revision: number; duplicate?: boolean }>("me", "round-save", { body: { round, draftId: draftId ?? null, baseRevision: revision, summary: summaryOf(r.doc) } });
+      if (res.duplicate) {
+        // PHP kannte die Runde schon (paralleler Versuch): Stand neu laden, vorhandenes Ergebnis liefern
+        const fresh = await loadDoc(true);
+        const again = await createRound(fresh.doc, input, ctx(), draftId);
+        return again.result;
+      }
       store(r.doc, res.revision);
       return r.result;
     }),
@@ -235,13 +244,19 @@ const member: MemberApi = {
     const { doc } = await loadDoc();
     const next = setFavorite(doc, courseId, favorite);
     store(next, await savePrefs(next));
-    return { favorites: next.preferences.favorites, homeCourseId: next.preferences.homeCourseId };
+    return publicPreferences(next);
   },
   async setHomeCourse(courseId) {
     const { doc } = await loadDoc();
     const next = setHomeCourse(doc, courseId);
     store(next, await savePrefs(next, true));
-    return { favorites: next.preferences.favorites, homeCourseId: next.preferences.homeCourseId };
+    return publicPreferences(next);
+  },
+  async setRoundEntryMode(mode) {
+    const { doc } = await loadDoc();
+    const next = setRoundEntryMode(doc, mode);
+    store(next, await savePrefs(next));
+    return publicPreferences(next);
   },
   drafts: async () => (await loadDoc()).doc.drafts,
   async saveDraft(draft) {

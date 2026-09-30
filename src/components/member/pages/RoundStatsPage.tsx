@@ -17,6 +17,8 @@ import { Alert, Button } from "@/components/ui";
 import { ConfirmDialog, ErrorState, PageSkeleton, useToast } from "@/components/ui/feedback";
 import { roundHref } from "@/components/member/RoundList";
 import { DetailedHoleInput } from "@/components/stats/DetailedHoleInput";
+import { MobileStatsEditor } from "@/components/member/mobile/MobileStatsEditor";
+import { useMobileEntry } from "@/components/member/mobile/hooks";
 
 interface Loaded {
   detail: RoundDetail;
@@ -55,6 +57,7 @@ export function RoundStatsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const mobile = useMobileEntry();
 
   const loaded = useApi<Loaded>(async () => {
     const detail = await api.member.round(id);
@@ -76,8 +79,34 @@ export function RoundStatsPage() {
   }, [dirty]);
 
   if (loaded.error) return <ErrorState error={loaded.error} onRetry={loaded.reload} />;
-  if (!loaded.data) return <PageSkeleton variant="detail" />;
+  if (!loaded.data || mobile === null) return <PageSkeleton variant="detail" />;
   const { detail, parEditable } = loaded.data;
+
+  if (mobile) {
+    return (
+      <MobileStatsEditor
+        title={`${detail.item.courseName} · ${formatDate(detail.item.date)}`}
+        initial={loaded.data.stats}
+        scoresLocked={detail.scoresLocked}
+        parEditable={parEditable}
+        saving={saving}
+        error={error}
+        onCancel={() => router.push(roundHref(id))}
+        onSave={async (stats) => {
+          setSaving(true);
+          setError(null);
+          try {
+            await api.member.saveRoundStats(id, stats);
+            toast("Statistik gespeichert. Dein Handicap bleibt unverändert.");
+            router.push(`${roundHref(id)}&tab=stats`);
+          } catch (e) {
+            setError(userMessage(e));
+            setSaving(false);
+          }
+        }}
+      />
+    );
+  }
   const current = stats ?? loaded.data.stats;
   const validation = validateHoleStats(current, current.map((h) => h.number));
 

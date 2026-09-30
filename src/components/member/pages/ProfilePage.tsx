@@ -139,6 +139,45 @@ function GolfSection() {
   );
 }
 
+/** Profil → Rundeneingabe: Standard der mobilen Scorecard (sofort gespeichert). */
+function RoundEntrySection() {
+  const toast = useToast();
+  const profile = useApi(() => api.member.profile(), "profile-entry");
+  const [busy, setBusy] = useState(false);
+  if (!profile.data) return null;
+  const value = profile.data.preferences.roundEntryMode ?? "ASK";
+  return (
+    <Card>
+      <CardHeader title="Rundeneingabe" subtitle="Wie die Scorekarte auf dem Smartphone startet. Du kannst es bei jeder Runde ändern." />
+      <CardBody>
+        <Segmented
+          name="Rundeneingabe"
+          value={value}
+          onChange={async (roundEntryMode) => {
+            if (busy) return;
+            setBusy(true);
+            try {
+              const preferences = await api.member.setRoundEntryMode(roundEntryMode);
+              profile.setData({ ...profile.data!, preferences });
+              toast("Gespeichert.");
+            } catch (err) {
+              toast(userMessage(err), "error");
+            } finally {
+              setBusy(false);
+            }
+          }}
+          options={[
+            { value: "ASK" as const, label: "Beim Start fragen" },
+            { value: "QUICK" as const, label: "Schnell" },
+            { value: "DETAILED" as const, label: "Detailliert" },
+          ]}
+        />
+        <p className="mt-2 text-sm text-ink-3">Schnell: nur Schläge je Loch. Detailliert: zusätzlich Putts, Fairways, Grüns und weitere Statistik.</p>
+      </CardBody>
+    </Card>
+  );
+}
+
 function SecuritySection() {
   const { setUser, user } = useSession();
   const toast = useToast();
@@ -282,6 +321,7 @@ export function ProfilePage() {
         <div className="space-y-5">
           <AccountSection />
           <GolfSection />
+          <RoundEntrySection />
         </div>
       )}
       {tab === "sicherheit" && <SecuritySection />}

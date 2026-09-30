@@ -2,7 +2,7 @@
 openapi: 3.1.0
 info:
   title: Golf HCP Rechner – WHS 2026 · API
-  version: 2.2.0
+  version: 2.3.0
   description: 'Schnittstelle zwischen Oberfläche und Backend. Die Oberfläche greift ausschließlich über den API-Adapter
 
     (`src/lib/api/client.ts`) zu.
@@ -1262,9 +1262,14 @@ paths:
     post:
       tags:
       - me
-      summary: Runde speichern (Audit ROUND_CREATED)
+      summary: Runde speichern (Audit ROUND_CREATED) – mit draftId idempotent
+      description: 'Mit `draftId` (Entwurfs-ID, `[A-Za-z0-9_-]{1,64}`) ist das Speichern idempotent: Wurde aus diesem
+        Entwurf bereits eine Runde gespeichert (z. B. Wiederholung nach Verbindungsabbruch der mobilen Scorecard), entsteht
+        keine zweite Runde – die Antwort ist 200 mit dem Ergebnis der vorhandenen Runde, ohne zweiten Audit-Eintrag. Die
+        Kennung wird als `clientRef` an der Runde gespeichert.'
       security: *id002
-      x-webspace: POST api/me.php?action=round-save mit round, draftId und baseRevision
+      x-webspace: 'POST api/me.php?action=round-save mit round (inkl. clientRef), draftId und baseRevision; kennt PHP die
+        clientRef schon, antwortet es mit { duplicate: true, roundId } und legt nichts an'
       requestBody:
         content:
           application/json:
@@ -1279,7 +1284,13 @@ paths:
                   - 'null'
       responses:
         '201':
-          description: OK
+          description: Neu gespeichert
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoundSaveResult'
+        '200':
+          description: Bereits aus diesem Entwurf gespeichert – Ergebnis der vorhandenen Runde
           content:
             application/json:
               schema:
@@ -1387,6 +1398,32 @@ paths:
       responses:
         '200':
           description: MemberPreferences
+  /api/me/preferences:
+    put:
+      tags:
+      - me
+      summary: Standard der mobilen Rundeneingabe (Profil → Rundeneingabe)
+      security: *id002
+      x-webspace: POST api/me.php?action=prefs-save mit preferences.roundEntryMode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - roundEntryMode
+              properties:
+                roundEntryMode:
+                  type: string
+                  enum:
+                  - ASK
+                  - QUICK
+                  - DETAILED
+      responses:
+        '200':
+          description: MemberPreferences (favorites, homeCourseId, roundEntryMode)
+        '400':
+          description: VALIDATION
   /api/me/drafts:
     get:
       tags:

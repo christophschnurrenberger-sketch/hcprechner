@@ -112,6 +112,8 @@ golf-hcp-rechner/
 | Detailseiten | `/admin/courses/<id>`, `/golfplaetze/<region>/<slug>` | `/admin/courses/view?id=`, `/golfplaetze/anlage/?slug=` |
 | Community, Ranking | Tabellen `community_profiles`, `public_rounds`, `ranking_snapshots`; Position per SQL | Indexdateien in `data/community/`; gleiche Projektion und gleiche Ranking-Regeln (Paritätstest) |
 | Ranking-Kennzahlen | vom Server berechnet | vom Browser mitgeschickt (`summary`), PHP prüft Wertebereiche – siehe Grenzen |
+| Doppelte Runden (Offline-Wiederholung der mobilen Scorecard) | Service-Schicht erkennt die Entwurfs-ID (`clientRef`) | zusätzlich prüft `me.php?action=round-save` die `clientRef` und legt keine zweite Runde an |
+| App-Installation (PWA) | `manifest.webmanifest`, Icons | gleich; `install.php` trägt den Basispfad ein und setzt den MIME-Typ `application/manifest+json` in der `.htaccess` |
 | Bayern-Importer (Discovery) | `npm run import:bavaria` | nicht auf dem Webspace; Ergebnis als CSV importieren oder JSON-Export der Node-Edition einspielen |
 
 Warum rechnet der Browser? PHP kann die TypeScript-Engine nicht ausführen, und eine zweite Implementierung der WHS-Regeln

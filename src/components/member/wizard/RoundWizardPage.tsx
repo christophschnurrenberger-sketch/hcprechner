@@ -3,7 +3,8 @@
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api/client";
-import type { RoundInput } from "@/lib/api/types";
+import type { DraftRound, RoundEntryMode, RoundInput } from "@/lib/api/types";
+import { holesFor } from "@/lib/courses/ratingSelection";
 import { fetchCourse } from "@/lib/courses/client";
 import type { CourseDto } from "@/lib/courses/types";
 import { todayIso } from "@/lib/whs/dates";
@@ -13,12 +14,32 @@ import { Alert, ButtonLink } from "@/components/ui";
 import { ErrorState, PageSkeleton } from "@/components/ui/feedback";
 import { roundHref } from "@/components/member/RoundList";
 import { RoundWizard } from "./RoundWizard";
+import { MobileRoundEntry } from "@/components/member/mobile/MobileRoundEntry";
+import { useMobileEntry } from "@/components/member/mobile/hooks";
 import { initialState, restoreState, type WizardState } from "./wizardState";
 
 interface Loaded {
   state: WizardState;
   course: CourseDto | null;
   unsupported?: string;
+  /** Ausgangszustand einer neuen Runde (für die Wiederaufnahme) */
+  base: WizardState;
+  drafts: DraftRound[];
+  openedDraft: DraftRound | null;
+  entryPref: RoundEntryMode;
+  /** Vorschlag für die mobile Eingabe: Heimatplatz bzw. zuletzt gespielt */
+  suggested: CourseDto | null;
+  hcpi: number | null;
+}
+
+/** Kann die mobile Scorecard diesen Stand darstellen? (sonst bisherige Eingabe, z. B. Stableford, manueller Platz) */
+function mobileSupports(state: WizardState, course: CourseDto | null, editing: boolean): boolean {
+  if (state.courseKind !== "DB") return !editing && !state.manual.courseName;
+  if (state.scoreMode === "STABLEFORD_TOTAL") return false;
+  if (!editing) return true;
+  if (state.scoreMode === "GBE") return Boolean(course);
+  const layout = course?.layouts.find((l) => l.id === state.layoutId);
+  return Boolean(layout && state.teeColor && holesFor(layout, { gender: state.gender, teeColor: state.teeColor, holes: state.holes, nine: state.holes === 9 && layout.holesCount >= 18 ? (state.nine ?? "FRONT") : null }));
 }
 
 /** Gespeicherte Eingabe → Wizard (zum Bearbeiten). */
@@ -58,50 +79,84 @@ export function RoundWizardPage() {
   const editId = params.get("edit");
   const draftParam = params.get("draft");
   const courseParam = params.get("course");
+  const classic = params.get("classic") === "1";
+  const resumeNow = params.get("resume") === "1";
   const [draftId] = useState(() => draftParam ?? crypto.randomUUID());
   const lists = useApi(() => api.member.courseLists(), "lists");
   const { settings } = useSession();
   const communityOn = settings.community.communityEnabled;
+  const mobile = useMobileEntry();
 
   const loaded = useApi<Loaded>(async () => {
-    const [profile, community] = await Promise.all([api.member.profile(), communityOn ? api.member.community().catch(() => null) : Promise.resolve(null)]);
+    const [profile, community, drafts, hcp, courseLists] = await Promise.all([
+      api.member.profile(),
+      communityOn ? api.member.community().catch(() => null) : Promise.resolve(null),
+      api.member.drafts().catch(() => [] as DraftRound[]),
+      api.member.hcp().catch(() => null),
+      api.member.courseLists().catch(() => null),
+    ]);
     const base = initialState(todayIso(), profile.profile.gender ?? "M", community?.settings.defaultRoundVisibility ?? "PRIVATE");
+    const common = { base, drafts, openedDraft: null as DraftRound | null, entryPref: profile.preferences.roundEntryMode ?? "ASK", hcpi: hcp?.currentHandicapIndex ?? null, suggested: null as CourseDto | null };
     if (editId) {
       const detail = await api.member.round(editId);
       const { state, unsupported } = fromInput(detail.input, base);
       const course = state.courseKind === "DB" && state.courseId ? await fetchCourse(state.courseId).catch(() => null) : null;
       if (course) state.courseName = course.name;
-      return { state, course, unsupported };
+      return { ...common, state, course, unsupported };
     }
     if (draftParam) {
-      const drafts = await api.member.drafts();
       const draft = drafts.find((d) => d.id === draftParam);
       if (draft) {
         const state = restoreState(draft.input.wizard, base);
         const course = state.courseKind === "DB" && state.courseId ? await fetchCourse(state.courseId).catch(() => null) : null;
-        return { state, course };
+        return { ...common, state, course, openedDraft: draft };
       }
     }
-    const homeOrParam = courseParam ?? profile.preferences.homeCourseId;
-    if (homeOrParam && courseParam) {
-      const course = await fetchCourse(homeOrParam).catch(() => null);
+    if (courseParam) {
+      const course = await fetchCourse(courseParam).catch(() => null);
       if (course) {
         const layouts = course.layouts.filter((l) => l.active);
-        return { state: { ...base, courseId: course.id, courseName: course.name, layoutId: layouts.length === 1 ? layouts[0].id : null }, course };
+        return { ...common, state: { ...base, courseId: course.id, courseName: course.name, layoutId: layouts.length === 1 ? layouts[0].id : null }, course };
       }
     }
-    return { state: base, course: null };
+    // Mobile Eingabe: Heimatplatz bzw. zuletzt gespielten Platz vorschlagen
+    const suggestedId = courseLists?.home?.id ?? courseLists?.recent[0]?.id ?? null;
+    const suggested = suggestedId ? await fetchCourse(suggestedId).catch(() => null) : null;
+    return { ...common, state: base, course: null, suggested };
   }, `${editId}|${draftParam}|${courseParam}`);
 
   if (loaded.error) return <ErrorState error={loaded.error} onRetry={loaded.reload} />;
-  if (!loaded.data) return <PageSkeleton variant="detail" />;
-  if (loaded.data.unsupported) {
+  if (!loaded.data || mobile === null) return <PageSkeleton variant="detail" />;
+  const d = loaded.data;
+  if (d.unsupported) {
     return (
       <div className="mx-auto max-w-xl space-y-4">
-        <Alert tone="info">{loaded.data.unsupported}</Alert>
+        <Alert tone="info">{d.unsupported}</Alert>
         {editId && <ButtonLink href={roundHref(editId)} variant="secondary">Zurück zur Runde</ButtonLink>}
       </div>
     );
   }
-  return <RoundWizard initial={loaded.data.state} initialCourse={loaded.data.course} editId={editId} draftId={draftId} lists={lists.data} />;
+  if (mobile && !classic && mobileSupports(d.state, d.course, Boolean(editId))) {
+    // Neue Runde: vorgeschlagenen Platz übernehmen (nur mobil – die Desktop-Eingabe startet wie bisher mit der Suche)
+    const withSuggestion =
+      !editId && !d.openedDraft && !d.course && d.suggested
+        ? { state: { ...d.state, courseId: d.suggested.id, courseName: d.suggested.name, layoutId: d.suggested.layouts.filter((l) => l.active).length === 1 ? d.suggested.layouts.find((l) => l.active)!.id : null }, course: d.suggested }
+        : { state: d.state, course: d.course };
+    return (
+      <MobileRoundEntry
+        base={d.base}
+        initial={withSuggestion.state}
+        initialCourse={withSuggestion.course}
+        editId={editId}
+        draftId={draftId}
+        openedDraft={d.openedDraft}
+        resumeNow={resumeNow}
+        drafts={d.drafts}
+        lists={lists.data}
+        entryPref={d.entryPref}
+        hcpi={d.hcpi}
+      />
+    );
+  }
+  return <RoundWizard initial={d.state} initialCourse={d.course} editId={editId} draftId={draftId} lists={lists.data} />;
 }

@@ -260,9 +260,13 @@ export interface MemberCourseLists {
   home: CourseSummary | null;
 }
 
+export type RoundEntryMode = "ASK" | "QUICK" | "DETAILED";
+
 export interface MemberPreferences {
   favorites: string[];
   homeCourseId: string | null;
+  /** Rundeneingabe auf dem Smartphone: Standard „Schnell“, „Detailliert“ oder bei jeder Runde fragen */
+  roundEntryMode: RoundEntryMode;
 }
 
 export interface MemberProfileData {

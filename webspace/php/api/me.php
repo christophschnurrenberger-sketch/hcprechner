@@ -142,6 +142,13 @@ function me_clean_hole_stats($holes, string $field = 'holeStats'): ?array
 /** Community-Felder einer Runde: Sichtbarkeit prüfen, Lochstatistik prüfen, Moderation nur vom Server. */
 function me_round_extras(array $round, ?array $old): array
 {
+    // Entwurfs-Kennung (idempotentes Speichern) – bleibt bei späteren Änderungen erhalten
+    if (!me_id_ok($round['clientRef'] ?? null)) {
+        unset($round['clientRef']);
+    }
+    if ($old !== null && me_id_ok($old['clientRef'] ?? null)) {
+        $round['clientRef'] = $old['clientRef'];
+    }
     $round['visibility'] = in_array($round['visibility'] ?? null, hcp_cm_visibilities(), true) ? $round['visibility'] : 'PRIVATE';
     if (array_key_exists('holeStats', $round)) {
         $clean = me_clean_hole_stats($round['holeStats'], 'round.holeStats');
@@ -220,6 +227,14 @@ switch ($action) {
                     $found = true;
                 }
             }
+            if (!$found && me_id_ok($round['clientRef'] ?? null)) {
+                // Wiederholte Anfrage aus demselben Entwurf (z. B. nach Verbindungsabbruch): keine zweite Runde
+                foreach ($doc['rounds'] as $r) {
+                    if (($r['clientRef'] ?? null) === $round['clientRef'] && ($r['status'] ?? 'COMPLETED') !== 'DELETED') {
+                        return ['duplicate' => $r['id']];
+                    }
+                }
+            }
             if (!$found) {
                 if (count($doc['rounds']) >= ME_MAX_ROUNDS) {
                     hcp_fail('VALIDATION', 'Maximale Anzahl an Runden erreicht.');
@@ -237,6 +252,9 @@ switch ($action) {
             return $old;
         });
         $old = $res['result'];
+        if (is_array($old) && isset($old['duplicate'])) {
+            hcp_json(['ok' => true, 'duplicate' => true, 'roundId' => $old['duplicate'], 'revision' => $res['revision'], 'updatedAt' => $res['updatedAt']]);
+        }
         me_audit($user, $old === null ? 'ROUND_CREATED' : 'ROUND_MODIFIED', [
             'entityType' => 'round', 'entityId' => $round['id'],
             'oldValue' => $old === null ? null : me_round_summary($old),
@@ -354,12 +372,14 @@ switch ($action) {
         }
         $home = me_id_ok($prefs['homeCourseId'] ?? null) ? $prefs['homeCourseId'] : null;
         $onboarded = is_string($prefs['onboardedAt'] ?? null) ? substr($prefs['onboardedAt'], 0, 40) : null;
-        $res = hcp_with_member_doc($uid, function (array &$doc) use ($favorites, $home, $onboarded, $body) {
+        $entryMode = in_array($prefs['roundEntryMode'] ?? null, ['ASK', 'QUICK', 'DETAILED'], true) ? $prefs['roundEntryMode'] : null;
+        $res = hcp_with_member_doc($uid, function (array &$doc) use ($favorites, $home, $onboarded, $entryMode, $body) {
             $before = $doc['preferences']['homeCourseId'] ?? null;
             $doc['preferences'] = [
                 'favorites' => array_slice($favorites, 0, 100),
                 'homeCourseId' => $home,
                 'onboardedAt' => $onboarded ?? ($doc['preferences']['onboardedAt'] ?? null),
+                'roundEntryMode' => $entryMode ?? ($doc['preferences']['roundEntryMode'] ?? 'ASK'),
             ];
             me_store_summary($doc, $body);
             return $before !== $home;

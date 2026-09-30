@@ -28,6 +28,12 @@ im Audit-Log mit Zeitpunkt, Admin, betroffenem Benutzer, altem und neuem Wert.
 private Runden, E-Mail-Adressen und interne IDs nie an andere Mitglieder aus; Notizen bleiben privat, solange sie
 nicht ausdrücklich freigegeben sind. Statistiken verändern das Handicap nicht. Details: [`docs/COMMUNITY.md`](docs/COMMUNITY.md).
 
+**Rundeneingabe auf dem Smartphone (ab 2.3):** eine eigene, schrittweise digitale Scorekarte statt eines verkleinerten
+Formulars – Loch für Loch Schläge, Putts und nur die relevanten Statistikfragen, große Tasten, Bedienung mit einer Hand,
+Wahl zwischen „Schnell“ und „Detailliert“. Jede Eingabe wird sofort auf dem Gerät gesichert; bei Funkloch geht es weiter,
+eine offline beendete Runde wird später übertragen – ohne doppelte Runden. Installierbar als App (PWA). Desktop und
+Tablet quer behalten die bisherige Eingabe. Details: [`docs/MOBILE-RUNDENEINGABE.md`](docs/MOBILE-RUNDENEINGABE.md).
+
 ## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
 
 Für klassischen PHP-Webspace (Strato, IONOS, all-inkl, netcup, …) gibt es die **Webspace-Edition**:
@@ -127,6 +133,7 @@ API beider Editionen: [`docs/openapi.yaml`](docs/openapi.yaml). Das Frontend spr
 
 - [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md) – Aufbau, Bereiche, API-Adapter, Rechte, Regel-Engine, Datenmodell, Rundungspunkte
 - [`docs/COMMUNITY.md`](docs/COMMUNITY.md) – Community, Ranking, Privatsphäre, Golfstatistik (Definitionen, Speicherung, Grenzen)
+- [`docs/MOBILE-RUNDENEINGABE.md`](docs/MOBILE-RUNDENEINGABE.md) – mobile Scorecard: Ablauf, Offline-Entwurf, Wiederaufnahme, keine doppelten Runden, PWA
 - [`docs/openapi.yaml`](docs/openapi.yaml) – API (Auth, Mitglied, Community, Admin)
 - [`docs/WEBSPACE.md`](docs/WEBSPACE.md) – Webspace-Edition: Installation, Update, Sicherheit, Aufbau
 - [`docs/ABSCHLUSS-CHECK.md`](docs/ABSCHLUSS-CHECK.md) – Checkliste aus der Spezifikation mit Status

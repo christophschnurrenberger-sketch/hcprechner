@@ -6,7 +6,7 @@
  * GET    /api/me/dashboard            Dashboard
  * GET    /api/me/hcp                  Handicap Index mit Rechenweg und Verlauf
  * GET    /api/me/rounds?holes=9|18    Runden
- * POST   /api/me/rounds               { input, draftId? } → Ergebnis
+ * POST   /api/me/rounds               { input, draftId? } → Ergebnis (mit draftId idempotent: 200 statt 201, keine zweite Runde)
  * POST   /api/me/rounds/preview       { input, roundId? } → Vorschau (nicht gespeichert)
  * GET    /api/me/rounds/:id           Rundendetail
  * PUT    /api/me/rounds/:id           { input } → Ergebnis (Verlauf wird neu berechnet)
@@ -16,6 +16,7 @@
  * GET    /api/me/courses              Favoriten, Heimatplatz, zuletzt gespielt
  * PUT    /api/me/favorites/:courseId  { favorite }
  * PUT    /api/me/home-course          { courseId }
+ * PUT    /api/me/preferences          { roundEntryMode: ASK|QUICK|DETAILED }
  * GET    /api/me/drafts | PUT/DELETE /api/me/drafts/:id
  * POST   /api/me/import/preview | /api/me/import   { csv }
  * PUT    /api/me/rounds/:id/stats     { holeStats } → Lochstatistik ergänzen (Handicap bleibt unverändert)
@@ -32,7 +33,7 @@
  */
 import { apiError } from "@/lib/api/errors";
 import type { MemberProfileData } from "@/lib/api/types";
-import type { MemberDoc } from "@/lib/member/doc";
+import { publicPreferences, type MemberDoc } from "@/lib/member/doc";
 import { computeHcp, dashboardData, listRounds, roundDetail } from "@/lib/member/hcp";
 import {
   completeOnboarding,
@@ -46,7 +47,7 @@ import {
   previewRoundsImport,
   saveDraft,
   setFavorite,
-  setHomeCourse,
+  setHomeCourse, setRoundEntryMode,
   setStartHandicap,
   simulateDifferential,
   statistics,
@@ -83,7 +84,7 @@ function roundSummary(round: Round | undefined) {
 
 async function profileData(user: UserRow, doc?: MemberDoc): Promise<MemberProfileData> {
   const d = doc ?? (await loadMemberDoc(user.id)).doc;
-  return { user: await sessionView(user), profile: d.profile, preferences: { favorites: d.preferences.favorites, homeCourseId: d.preferences.homeCourseId } };
+  return { user: await sessionView(user), profile: d.profile, preferences: publicPreferences(d) };
 }
 
 function performanceFilter(req: Request): PerformanceFilter {
@@ -164,8 +165,10 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       const ctx = await prefetchedContext(body.input);
       const { result } = await withMemberDoc(user.id, async (doc) => {
         const r = await createRound(doc, body.input, ctx, draftId);
-        return { doc: r.doc, result: { save: r.result, round: r.doc.rounds.find((x) => x.id === r.result.roundId) } };
+        return { doc: r.doc, result: { save: r.result, duplicate: r.duplicate, round: r.doc.rounds.find((x) => x.id === r.result.roundId) } };
       });
+      // Wiederholte Anfrage (gleicher Entwurf): keine zweite Runde, kein zweiter Audit-Eintrag
+      if (result.duplicate) return json(result.save, 200);
       await audit("ROUND_CREATED", user, { userId: user.id, entityType: "round", entityId: result.save.roundId, newValue: roundSummary(result.round) });
       await syncCommunitySafe(user.id);
       return json(result.save, 201);
@@ -239,7 +242,7 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       const next = setFavorite(doc, id.slice(0, 64), body.favorite !== false);
       return { doc: next, result: next.preferences };
     });
-    return json({ favorites: result.favorites, homeCourseId: result.homeCourseId });
+    return json(publicPreferences({ preferences: result }));
   }
 
   if (head === "home-course" && !id && method === "PUT") {
@@ -250,7 +253,16 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       return { doc: next, result: next.preferences };
     });
     await syncCommunitySafe(user.id);
-    return json({ favorites: result.favorites, homeCourseId: result.homeCourseId });
+    return json(publicPreferences({ preferences: result }));
+  }
+
+  if (head === "preferences" && !id && method === "PUT") {
+    const body = await readJson(req, 1000);
+    const { result } = await withMemberDoc(user.id, (doc) => {
+      const next = setRoundEntryMode(doc, body.roundEntryMode);
+      return { doc: next, result: next.preferences };
+    });
+    return json(publicPreferences({ preferences: result }));
   }
 
   if (head === "drafts") {

@@ -8,6 +8,7 @@ import { cn } from "@/lib/format";
 import { useSession } from "@/components/session/SessionProvider";
 import { PageSkeleton } from "@/components/ui/feedback";
 import { Brand } from "./Brand";
+import { RoundSyncAgent } from "@/components/member/mobile/RoundSyncAgent";
 
 interface NavItem {
   href: string;
@@ -167,6 +168,7 @@ export function MemberShell({ children }: { children: ReactNode }) {
       <main id="inhalt" className="mx-auto max-w-5xl px-4 py-5 sm:py-8">
         {ready ? children : <PageSkeleton />}
       </main>
+      {ready && <RoundSyncAgent />}
 
       {!focusMode && ready && (
         <>

@@ -64,6 +64,7 @@ const member: MemberApi = {
   courseLists: () => request("/api/me/courses"),
   setFavorite: (courseId, favorite) => request(`/api/me/favorites/${encodeURIComponent(courseId)}`, { method: "PUT", body: { favorite } }),
   setHomeCourse: (courseId) => request("/api/me/home-course", { method: "PUT", body: { courseId } }),
+  setRoundEntryMode: (roundEntryMode) => request("/api/me/preferences", { method: "PUT", body: { roundEntryMode } }),
   drafts: () => request("/api/me/drafts"),
   saveDraft: (draft) => request(`/api/me/drafts/${encodeURIComponent(draft.id)}`, { method: "PUT", body: { label: draft.label, input: draft.input } }),
   deleteDraft: async (id) => {

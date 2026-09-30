@@ -181,3 +181,41 @@ input[type="number"].no-spin {
     background: #fff;
   }
 }
+
+/* Mobile Scorecard: kurze Übergänge (150–250 ms), bei reduzierter Bewegung abgeschaltet (siehe oben) */
+@keyframes hcp-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes hcp-step-next {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes hcp-step-back {
+  from {
+    transform: translateX(-28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
