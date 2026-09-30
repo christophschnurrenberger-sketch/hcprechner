@@ -536,7 +536,7 @@ export function SearchPage() {
                           {u.firstName} {u.lastName}
                         </span>
                         <span className="block text-xs text-ink-3">
-                          {u.email ?? "–"} · <RoleBadge role={u.role} />
+                          {u.email ?? u.username ?? "–"} · <RoleBadge role={u.role} />
                         </span>
                       </Link>
                     </li>

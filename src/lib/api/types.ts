@@ -32,6 +32,8 @@ import type {
 export interface SessionUser {
   id: string;
   email: string | null;
+  /** Anmeldename bei Konten ohne E-Mail-Adresse (vom Admin angelegt) bzw. aus Version 1 */
+  username: string | null;
   firstName: string;
   lastName: string;
   role: Role;
@@ -442,16 +444,22 @@ export interface AdminSettingsInput extends Partial<Omit<AdminSettings, "mail">>
 export interface AdminUserInput {
   firstName: string;
   lastName: string;
+  /** leer, wenn ein Benutzername angegeben ist (Konto ohne E-Mail-Adresse) */
   email: string;
+  /** optional; Pflicht ohne E-Mail-Adresse (3–32 Zeichen a–z, 0–9, . _ -) */
+  username?: string;
   role: Role;
-  /** leer: Einladung per E-Mail */
+  /** leer: Einladung per E-Mail (nur mit E-Mail-Adresse) */
   password?: string;
+  /** Standard true: bei der ersten Anmeldung ein eigenes Passwort wählen */
+  mustChangePassword?: boolean;
 }
 
 export interface AdminUserPatch {
   firstName?: string;
   lastName?: string;
   email?: string;
+  username?: string;
   role?: Role;
   status?: UserStatus;
   emailVerified?: true;

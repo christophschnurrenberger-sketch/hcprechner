@@ -29,16 +29,20 @@ export async function userByEmail(email: string): Promise<UserRow | null> {
   return row ?? null;
 }
 
-/** E-Mail-Adresse oder – für übernommene Konten der Version 1 – Benutzername. */
+/** Benutzername ohne Beachtung der Groß-/Kleinschreibung (Konten der Version 1 können Großbuchstaben enthalten). */
+export async function userByUsername(username: string): Promise<UserRow | null> {
+  const value = username.trim().toLowerCase();
+  if (!value) return null;
+  const db = await getDb();
+  const [row] = await db.select().from(users).where(sql`lower(${users.username}) = ${value}`);
+  return row ?? null;
+}
+
+/** E-Mail-Adresse oder Benutzername (vom Admin angelegte Konten ohne E-Mail, übernommene Konten der Version 1). */
 export async function userByLogin(login: string): Promise<UserRow | null> {
   const value = login.trim().toLowerCase();
   if (!value) return null;
-  const db = await getDb();
-  const [row] = await db
-    .select()
-    .from(users)
-    .where(value.includes("@") ? eq(users.email, value) : eq(users.username, value));
-  return row ?? null;
+  return value.includes("@") ? userByEmail(value) : userByUsername(value);
 }
 
 export async function updateUser(id: string, patch: Partial<typeof users.$inferInsert>): Promise<UserRow> {

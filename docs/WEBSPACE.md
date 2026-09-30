@@ -135,6 +135,9 @@ Wertebereiche, lehnt veraltete Revisionen ab und protokolliert Änderungen.
 - Registrierung unter `/register/` (im Admin-Bereich abschaltbar) mit Bestätigungslink per E-Mail (48 Stunden
   gültig); selbst registrierte Konten erhalten immer die Rolle `USER`. Der Admin kann Konten auch direkt anlegen –
   mit Einladungsmail oder temporärem Passwort (Pflicht zum Wechsel bei der ersten Anmeldung).
+- Konten ohne E-Mail-Adresse (ab 2.5): Der Admin legt sie mit Benutzername und Passwort an. Die Anmeldung erfolgt mit
+  dem Benutzernamen; ein neues Passwort setzt der Admin, weil es ohne E-Mail kein „Passwort vergessen“ gibt. Gespeichert
+  wird wie bei allen Konten nur der Passwort-Hash (`data/users.php`).
 - Passwort vergessen: Link per E-Mail (1 Stunde gültig, einmalig). Die Antwort ist für bekannte und unbekannte
   Adressen gleich.
 - Rollen `USER`, `SUPPORT`, `ADMIN`, `SUPER_ADMIN` (siehe `docs/ARCHITEKTUR.md`). Deaktivierte oder gesperrte Konten

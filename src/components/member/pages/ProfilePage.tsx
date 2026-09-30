@@ -27,7 +27,7 @@ function AccountSection() {
   const [values, setValues] = useState({ firstName: user?.firstName ?? "", lastName: user?.lastName ?? "", email: user?.email ?? "", currentPassword: "" });
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  const emailChanged = values.email.trim().toLowerCase() !== (user?.email ?? "");
+  const emailChanged = values.email.trim() !== "" && values.email.trim().toLowerCase() !== (user?.email ?? "");
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -54,7 +54,14 @@ function AccountSection() {
         <form onSubmit={submit} noValidate className="space-y-4">
           {errors.form && <Alert tone="error">{errors.form}</Alert>}
           {pending && <Alert tone="info">Wir haben einen Bestätigungslink an {pending} geschickt. Die neue Adresse gilt, sobald du sie bestätigt hast.</Alert>}
-          {!user?.email && <Alert tone="warning">Bitte hinterlege eine E-Mail-Adresse – damit kannst du dich künftig anmelden und dein Passwort zurücksetzen.</Alert>}
+          {!user?.email &&
+            (user?.username ? (
+              <Alert tone="info">
+                Du meldest dich mit deinem Benutzernamen „{user.username}“ an. Eine E-Mail-Adresse ist freiwillig – mit ihr kannst du dein Passwort auch selbst zurücksetzen.
+              </Alert>
+            ) : (
+              <Alert tone="warning">Bitte hinterlege eine E-Mail-Adresse – damit kannst du dich künftig anmelden und dein Passwort zurücksetzen.</Alert>
+            ))}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Vorname" htmlFor="p-first" error={errors.fields.firstName}>
               <Input id="p-first" autoComplete="given-name" value={values.firstName} onChange={(e) => setValues({ ...values, firstName: e.target.value })} />
@@ -63,9 +70,16 @@ function AccountSection() {
               <Input id="p-last" autoComplete="family-name" value={values.lastName} onChange={(e) => setValues({ ...values, lastName: e.target.value })} />
             </Field>
           </div>
-          <Field label="E-Mail-Adresse" htmlFor="p-email" error={errors.fields.email}>
-            <Input id="p-email" type="email" autoComplete="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} />
-          </Field>
+          <div className={user?.username ? "grid gap-4 sm:grid-cols-2" : undefined}>
+            {user?.username && (
+              <Field label="Benutzername" htmlFor="p-username" hint="Ändert der Administrator.">
+                <Input id="p-username" value={user.username} readOnly disabled />
+              </Field>
+            )}
+            <Field label={user?.username && !user.email ? "E-Mail-Adresse (optional)" : "E-Mail-Adresse"} htmlFor="p-email" error={errors.fields.email}>
+              <Input id="p-email" type="email" autoComplete="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} />
+            </Field>
+          </div>
           {emailChanged && (
             <Field label="Aktuelles Passwort (zur Bestätigung)" htmlFor="p-pw" error={errors.fields.currentPassword}>
               <PasswordInput id="p-pw" autoComplete="current-password" value={values.currentPassword} onChange={(e) => setValues({ ...values, currentPassword: e.target.value })} />

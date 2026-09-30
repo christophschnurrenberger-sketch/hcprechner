@@ -43,14 +43,14 @@ hcp_require_post();
 $config = hcp_require_installed();
 $settings = hcp_settings();
 
-/** Konto zu E-Mail-Adresse oder (Konten der Version 1) Benutzername. */
+/** Konto zu E-Mail-Adresse oder Benutzername (vom Admin angelegte Konten ohne E-Mail, Konten der Version 1). */
 function auth_find_login(string $login): ?array
 {
     $login = strtolower(trim($login));
     if ($login === '') {
         return null;
     }
-    return strpos($login, '@') !== false ? hcp_find_user('email', $login) : hcp_find_user('username', $login);
+    return strpos($login, '@') !== false ? hcp_find_user('email', $login) : hcp_find_username(hcp_load_users(), $login);
 }
 
 function auth_password_pair(array $body, string $field, string $repeatField): string
@@ -388,21 +388,17 @@ switch ($action) {
             $u['firstName'] = $firstName;
             $u['lastName'] = $lastName;
             if ($emailChanged) {
-                if ($u['email'] === null) {
-                    // Konto der Version 1 ohne E-Mail: Adresse direkt übernehmen, Bestätigung folgt
-                    $u['email'] = $email;
-                    $u['emailVerified'] = false;
-                }
+                // Neue Adresse gilt erst nach Bestätigung – auch bei Konten ohne E-Mail bleibt die Anmeldung bis dahin möglich
                 list($plain, $hash) = hcp_new_token();
                 $token = $plain;
-                $u['pendingEmail'] = $u['email'] === $email ? null : $email;
+                $u['pendingEmail'] = $email;
                 $u['verifyTokenHash'] = $hash;
                 $u['verifyExpires'] = time() + 48 * 3600;
             }
         });
         if ($emailChanged && $token !== null) {
             $target = $user;
-            $target['email'] = $user['pendingEmail'] ?: $user['email'];
+            $target['email'] = $user['pendingEmail'];
             hcp_send_verification($config, $target, $token);
         }
         hcp_audit('USER_PROFILE_UPDATED', $user, ['userId' => $user['id'], 'entityType' => 'user', 'entityId' => $user['id'], 'oldValue' => $old, 'newValue' => ['firstName' => $firstName, 'lastName' => $lastName, 'email' => $email]]);
@@ -445,7 +441,7 @@ switch ($action) {
         });
         @unlink(hcp_member_file($user['id']));
         hcp_cm_remove_user($user['id']);
-        hcp_audit('USER_DELETED', $user, ['userId' => $user['id'], 'entityType' => 'user', 'entityId' => $user['id'], 'oldValue' => ['email' => $user['email'], 'name' => trim($user['firstName'] . ' ' . $user['lastName']), 'rounds' => $rounds, 'selfService' => true]]);
+        hcp_audit('USER_DELETED', $user, ['userId' => $user['id'], 'entityType' => 'user', 'entityId' => $user['id'], 'oldValue' => ['email' => $user['email'], 'username' => $user['username'] ?? null, 'name' => trim($user['firstName'] . ' ' . $user['lastName']), 'rounds' => $rounds, 'selfService' => true]]);
         hcp_clear_session($config);
         hcp_json(['ok' => true]);
         break;

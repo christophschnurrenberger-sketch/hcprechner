@@ -60,7 +60,7 @@ export function LoginForm() {
   return (
     <AuthCard
       title="Anmelden"
-      subtitle="Willkommen zurück! Melde dich mit deiner E-Mail-Adresse an."
+      subtitle="Willkommen zurück! Melde dich mit deiner E-Mail-Adresse oder deinem Benutzernamen an."
       footer={
         settings.registrationOpen ? (
           <>
@@ -93,8 +93,8 @@ export function LoginForm() {
             )}
           </div>
         )}
-        {/* type="text": Konten aus Version 1 melden sich auch mit ihrem Benutzernamen (ohne @) an */}
-        <Field label="E-Mail-Adresse" htmlFor="email" error={errors.fields.email}>
+        {/* type="text": vom Admin angelegte Konten ohne E-Mail (und Konten aus Version 1) melden sich mit dem Benutzernamen an */}
+        <Field label="E-Mail oder Benutzername" htmlFor="email" error={errors.fields.email}>
           <Input id="email" type="text" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={Boolean(errors.fields.email)} required autoFocus />
         </Field>
         <Field label="Passwort" htmlFor="password" error={errors.fields.password}>

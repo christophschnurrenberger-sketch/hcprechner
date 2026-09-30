@@ -214,8 +214,10 @@ export async function POST(req: Request, ctx: Ctx) {
       case "update-profile": {
         const user = await requireUser(req);
         const body = await readJson(req, 4000);
+        // Leeres Feld: bestehende Adresse bleibt; Konten mit Benutzername dürfen ohne E-Mail-Adresse bleiben.
         const input = profileSchema.parse({ ...body, email: body.email || user.email || "" });
-        const emailChanged = input.email !== user.email;
+        if (!input.email && !user.username) throw apiError("VALIDATION", "Bitte eine gültige E-Mail-Adresse eingeben.", { email: "Bitte eine gültige E-Mail-Adresse eingeben." });
+        const emailChanged = input.email !== "" && input.email !== user.email;
         if (emailChanged) {
           if (!(await verifyPassword(input.currentPassword ?? "", user.passwordHash))) {
             throw apiError("VALIDATION", "Zum Ändern der E-Mail-Adresse bitte das aktuelle Passwort eingeben.", { currentPassword: "Bitte das aktuelle Passwort eingeben." });
@@ -224,16 +226,14 @@ export async function POST(req: Request, ctx: Ctx) {
         }
         const old = { firstName: user.firstName, lastName: user.lastName, email: user.email };
         const patch: Partial<typeof users.$inferInsert> = { firstName: input.firstName, lastName: input.lastName };
-        if (emailChanged) {
-          if (!user.email) Object.assign(patch, { email: input.email, emailVerified: false, pendingEmail: null });
-          else patch.pendingEmail = input.email;
-        }
+        // Neue Adresse gilt erst nach Bestätigung – auch bei Konten ohne E-Mail bleibt die Anmeldung bis dahin möglich.
+        if (emailChanged) patch.pendingEmail = input.email;
         const updated = await updateUser(user.id, patch);
         if (emailChanged) {
           const token = await createToken(user.id, "VERIFY_EMAIL", 48);
           await sendVerificationMail(updated, input.email, token);
         }
-        await audit("USER_PROFILE_UPDATED", updated, { userId: user.id, entityType: "user", entityId: user.id, oldValue: old, newValue: { firstName: input.firstName, lastName: input.lastName, email: input.email } });
+        await audit("USER_PROFILE_UPDATED", updated, { userId: user.id, entityType: "user", entityId: user.id, oldValue: old, newValue: { firstName: input.firstName, lastName: input.lastName, email: emailChanged ? input.email : user.email } });
         await syncCommunitySafe(updated.id);
         return json({ user: await sessionView(updated), pendingEmail: updated.pendingEmail });
       }
@@ -259,7 +259,7 @@ export async function POST(req: Request, ctx: Ctx) {
           userId: user.id,
           entityType: "user",
           entityId: user.id,
-          oldValue: { email: user.email, name: `${user.firstName} ${user.lastName}`.trim(), rounds: doc.rounds.filter((r) => r.status !== "DELETED").length, selfService: true },
+          oldValue: { email: user.email, username: user.username, name: `${user.firstName} ${user.lastName}`.trim(), rounds: doc.rounds.filter((r) => r.status !== "DELETED").length, selfService: true },
         });
         await clearSession();
         return json({ ok: true });

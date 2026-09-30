@@ -8,9 +8,10 @@ import { api } from "@/lib/api/client";
 import { userMessage } from "@/lib/api/errors";
 import type { AdminUserDetail } from "@/lib/api/types";
 import { ROLES, ROLE_LABELS, STATUS_LABELS, USER_STATUSES, type Role, type UserStatus } from "@/lib/auth/permissions";
+import { USERNAME_RULE } from "@/lib/auth/validation";
 import { formatDate, formatDecimal, formatHcp } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
-import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardHeader, Field, Input, PageHeader, Segmented, Select } from "@/components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, CardBody, CardHeader, Checkbox, Field, Input, PageHeader, Segmented, Select } from "@/components/ui";
 import { ConfirmDialog, ErrorState, PageSkeleton, PasswordInput, useToast } from "@/components/ui/feedback";
 import { useFormErrors } from "@/components/auth/useFormErrors";
 import { useSession } from "@/components/session/SessionProvider";
@@ -140,8 +141,11 @@ export function NewUserPage() {
   const toast = useToast();
   const { can, user: me } = useSession();
   const errors = useFormErrors();
-  const [values, setValues] = useState({ firstName: "", lastName: "", email: "", role: "USER" as Role, password: "" });
+  const [values, setValues] = useState({ firstName: "", lastName: "", email: "", username: "", role: "USER" as Role, password: "" });
+  // Anmeldung per E-Mail-Adresse oder – z. B. für Freunde ohne E-Mail – per Benutzername und Passwort
+  const [login, setLogin] = useState<"email" | "username">("email");
   const [mode, setMode] = useState<"invite" | "password">("invite");
+  const [mustChange, setMustChange] = useState(true);
   const [busy, setBusy] = useState(false);
   const rank = (r: Role) => ROLES.indexOf(r);
   const assignable = ROLES.filter((r) => r === "USER" || (can("users.roles") && me && rank(r) <= rank(me.role)));
@@ -151,8 +155,26 @@ export function NewUserPage() {
     setBusy(true);
     errors.clear();
     try {
-      const res = await api.admin.createUser({ ...values, password: mode === "password" ? values.password : "" });
-      toast(res.invite ? (res.mailSent ? "Benutzer angelegt – Einladung verschickt." : "Benutzer angelegt. Die Einladung konnte nicht verschickt werden.") : "Benutzer angelegt.", res.invite && !res.mailSent ? "error" : "success");
+      const byName = login === "username";
+      const res = await api.admin.createUser({
+        firstName: values.firstName,
+        lastName: values.lastName,
+        role: values.role,
+        email: byName ? "" : values.email,
+        username: byName ? values.username : "",
+        password: byName || mode === "password" ? values.password : "",
+        mustChangePassword: byName ? mustChange : true,
+      });
+      toast(
+        res.invite
+          ? res.mailSent
+            ? "Benutzer angelegt – Einladung verschickt."
+            : "Benutzer angelegt. Die Einladung konnte nicht verschickt werden."
+          : byName
+            ? `Benutzer angelegt. Anmeldung mit dem Benutzernamen „${res.user.username}“ und dem vergebenen Passwort.`
+            : "Benutzer angelegt.",
+        res.invite && !res.mailSent ? "error" : "success",
+      );
       router.push(userHref(res.user.id));
     } catch (error) {
       errors.fromError(error);
@@ -178,9 +200,38 @@ export function NewUserPage() {
                 <Input id="n-last" value={values.lastName} onChange={(e) => setValues({ ...values, lastName: e.target.value })} required />
               </Field>
             </div>
-            <Field label="E-Mail-Adresse" htmlFor="n-email" error={errors.fields.email}>
-              <Input id="n-email" type="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} required />
+            <Field label="Anmeldung mit">
+              <Segmented
+                name="Anmeldung mit"
+                value={login}
+                onChange={(v) => {
+                  setLogin(v);
+                  errors.clear();
+                }}
+                options={[
+                  { value: "email", label: "E-Mail-Adresse" },
+                  { value: "username", label: "Benutzername (ohne E-Mail)" },
+                ]}
+              />
             </Field>
+            {login === "email" ? (
+              <Field label="E-Mail-Adresse" htmlFor="n-email" error={errors.fields.email}>
+                <Input id="n-email" type="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} required />
+              </Field>
+            ) : (
+              <Field label="Benutzername" htmlFor="n-username" hint={USERNAME_RULE} error={errors.fields.username}>
+                <Input
+                  id="n-username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="off"
+                  value={values.username}
+                  onChange={(e) => setValues({ ...values, username: e.target.value })}
+                  required
+                />
+              </Field>
+            )}
             <Field label="Rolle" htmlFor="n-role" hint={assignable.length === 1 ? "Weitere Rollen vergibt ein Super-Admin." : undefined} error={errors.fields.role}>
               <Select id="n-role" value={values.role} onChange={(e) => setValues({ ...values, role: e.target.value as Role })}>
                 {assignable.map((r) => (
@@ -190,21 +241,38 @@ export function NewUserPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Zugang">
-              <Segmented
-                name="Zugang"
-                value={mode}
-                onChange={setMode}
-                options={[
-                  { value: "invite", label: "Einladung per E-Mail" },
-                  { value: "password", label: "Vorläufiges Passwort" },
-                ]}
-              />
-            </Field>
-            {mode === "password" && (
-              <Field label="Vorläufiges Passwort" htmlFor="n-pw" hint="Mindestens 8 Zeichen. Der Benutzer muss es bei der ersten Anmeldung ändern." error={errors.fields.password}>
-                <PasswordInput id="n-pw" autoComplete="new-password" value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} />
-              </Field>
+            {login === "email" ? (
+              <>
+                <Field label="Zugang">
+                  <Segmented
+                    name="Zugang"
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                      { value: "invite", label: "Einladung per E-Mail" },
+                      { value: "password", label: "Vorläufiges Passwort" },
+                    ]}
+                  />
+                </Field>
+                {mode === "password" && (
+                  <Field label="Vorläufiges Passwort" htmlFor="n-pw" hint="Mindestens 8 Zeichen. Der Benutzer muss es bei der ersten Anmeldung ändern." error={errors.fields.password}>
+                    <PasswordInput id="n-pw" autoComplete="new-password" value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} />
+                  </Field>
+                )}
+              </>
+            ) : (
+              <>
+                <Field label="Passwort" htmlFor="n-pw" hint="Mindestens 8 Zeichen. Gib Benutzername und Passwort persönlich weiter." error={errors.fields.password}>
+                  <PasswordInput id="n-pw" autoComplete="new-password" value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} />
+                </Field>
+                <Checkbox
+                  id="n-must-change"
+                  checked={mustChange}
+                  onChange={setMustChange}
+                  label="Bei der ersten Anmeldung ein eigenes Passwort wählen"
+                  description="Empfohlen – dann kennt nur dein Freund sein Passwort. Ohne E-Mail-Adresse gibt es kein „Passwort vergessen“; ein neues Passwort setzt du hier im Admin-Bereich."
+                />
+              </>
             )}
             <Button type="submit" disabled={busy}>
               {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Benutzer anlegen
@@ -224,7 +292,7 @@ function ManageCard({ user, onChange }: { user: AdminUserDetail; onChange: () =>
   const toast = useToast();
   const { can, user: me } = useSession();
   const router = useRouter();
-  const [values, setValues] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email ?? "" });
+  const [values, setValues] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email ?? "", username: user.username ?? "" });
   const [busy, setBusy] = useState<string | null>(null);
   const [tempPw, setTempPw] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -287,9 +355,14 @@ function ManageCard({ user, onChange }: { user: AdminUserDetail; onChange: () =>
                 <Input id="u-last" value={values.lastName} onChange={(e) => setValues({ ...values, lastName: e.target.value })} />
               </Field>
             </div>
-            <Field label="E-Mail-Adresse" htmlFor="u-email" error={errors.fields.email}>
-              <Input id="u-email" type="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} />
-            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="E-Mail-Adresse" htmlFor="u-email" hint={user.email ? undefined : "optional"} error={errors.fields.email}>
+                <Input id="u-email" type="email" value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} />
+              </Field>
+              <Field label="Benutzername" htmlFor="u-username" hint={user.username ? "Anmeldung auch ohne E-Mail-Adresse" : "optional – Anmeldung ohne E-Mail-Adresse"} error={errors.fields.username}>
+                <Input id="u-username" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={values.username} onChange={(e) => setValues({ ...values, username: e.target.value })} />
+              </Field>
+            </div>
             <Button type="submit" size="sm" disabled={busy !== null}>
               {busy === "profile" && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Speichern
             </Button>
@@ -416,7 +489,7 @@ function ManageCard({ user, onChange }: { user: AdminUserDetail; onChange: () =>
         }}
       >
         <p className="text-ink-2">
-          {user.firstName} {user.lastName} ({user.email ?? "ohne E-Mail"}) mit {user.rounds} Runden wird gelöscht.
+          {user.firstName} {user.lastName} ({user.email ?? (user.username ? `Benutzername ${user.username}` : "ohne E-Mail")}) mit {user.rounds} Runden wird gelöscht.
         </p>
       </ConfirmDialog>
     </div>
@@ -478,7 +551,14 @@ export function UserDetailPage() {
             {user.firstName} {user.lastName}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-3">
-            {user.email ?? "keine E-Mail"} {user.emailVerified ? <Badge tone="good">bestätigt</Badge> : <Badge tone="warning">unbestätigt</Badge>} <RoleBadge role={user.role} /> <StatusBadge status={user.status} />
+            {user.email ? (
+              <>
+                {user.email} {user.emailVerified ? <Badge tone="good">bestätigt</Badge> : <Badge tone="warning">unbestätigt</Badge>}
+              </>
+            ) : (
+              "keine E-Mail"
+            )}
+            {user.username && <span>· Benutzername {user.username}</span>} <RoleBadge role={user.role} /> <StatusBadge status={user.status} />
             {user.mustChangePassword && <Badge tone="info">vorläufiges Passwort</Badge>}
           </p>
           {user.pendingEmail && <p className="mt-1 text-xs text-ink-3">Neue E-Mail-Adresse wartet auf Bestätigung: {user.pendingEmail}</p>}

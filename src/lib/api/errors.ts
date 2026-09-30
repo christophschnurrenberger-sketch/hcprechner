@@ -17,6 +17,7 @@ export type ApiErrorCode =
   | "ACCOUNT_DISABLED"
   | "ACCOUNT_LOCKED"
   | "EMAIL_TAKEN"
+  | "USERNAME_TAKEN"
   | "REGISTRATION_CLOSED"
   | "TOKEN_INVALID"
   | "COURSE_NOT_FOUND"
@@ -57,11 +58,12 @@ export const USER_MESSAGES: Record<ApiErrorCode, string> = {
   RATE_LIMITED: "Zu viele Versuche. Bitte warte ein paar Minuten.",
   NETWORK: "Deine Daten konnten gerade nicht geladen werden. Bitte prüfe die Verbindung.",
   SERVER: "Da ist etwas schiefgelaufen. Bitte versuche es gleich noch einmal.",
-  INVALID_CREDENTIALS: "E-Mail-Adresse oder Passwort ist falsch.",
+  INVALID_CREDENTIALS: "Anmeldename (E-Mail-Adresse bzw. Benutzername) oder Passwort ist falsch.",
   EMAIL_NOT_VERIFIED: "Bitte bestätige zuerst deine E-Mail-Adresse.",
   ACCOUNT_DISABLED: "Dieses Konto ist deaktiviert.",
   ACCOUNT_LOCKED: "Dieses Konto ist gesperrt.",
   EMAIL_TAKEN: "Für diese E-Mail-Adresse gibt es bereits ein Konto.",
+  USERNAME_TAKEN: "Diesen Benutzernamen gibt es bereits.",
   REGISTRATION_CLOSED: "Die Registrierung ist derzeit geschlossen.",
   TOKEN_INVALID: "Der Link ist ungültig oder abgelaufen.",
   COURSE_NOT_FOUND: "Der Golfplatz wurde nicht gefunden.",
@@ -98,6 +100,7 @@ export const ERROR_STATUS: Partial<Record<ApiErrorCode, number>> = {
   COMMUNITY_DISABLED: 403,
   CONFLICT: 409,
   EMAIL_TAKEN: 409,
+  USERNAME_TAKEN: 409,
   RATE_LIMITED: 429,
   SERVER: 500,
 };

@@ -341,7 +341,14 @@ switch ($action) {
     case 'user-create':
         $firstName = hcp_check_name(hcp_str($body, 'firstName', 200), 'firstName');
         $lastName = hcp_check_name(hcp_str($body, 'lastName', 200), 'lastName');
-        $email = hcp_check_email(hcp_str($body, 'email', 200));
+        // Anmeldung per E-Mail-Adresse und/oder Benutzername – ohne E-Mail (z. B. für Freunde) mit Benutzername + Passwort
+        $emailRaw = hcp_str($body, 'email', 200);
+        $usernameRaw = hcp_str($body, 'username', 64);
+        if ($emailRaw === '' && $usernameRaw === '') {
+            hcp_fail('VALIDATION', 'Bitte eine E-Mail-Adresse oder einen Benutzernamen angeben.', 0, ['email' => 'Bitte ausfüllen.', 'username' => 'Bitte ausfüllen.']);
+        }
+        $email = $emailRaw !== '' ? hcp_check_email($emailRaw) : null;
+        $username = $usernameRaw !== '' ? hcp_check_username($usernameRaw) : null;
         $role = hcp_str($body, 'role', 20) ?: 'USER';
         if (!in_array($role, ['USER', 'SUPPORT', 'ADMIN', 'SUPER_ADMIN'], true)) {
             hcp_fail('VALIDATION', 'Unbekannte Rolle', 0, ['role' => 'Unbekannte Rolle']);
@@ -351,28 +358,36 @@ switch ($action) {
         }
         $password = (string)($body['password'] ?? '');
         $invite = $password === '';
+        if ($invite && $email === null) {
+            hcp_fail('VALIDATION', 'Ohne E-Mail-Adresse bitte ein Passwort festlegen.', 0, ['password' => 'Bitte ein Passwort festlegen.']);
+        }
         if (!$invite) {
             hcp_check_password($password);
         }
+        // Standard: bei der ersten Anmeldung ein eigenes Passwort wählen (der Admin kennt das vergebene)
+        $mustChange = !$invite && ($body['mustChangePassword'] ?? true) !== false;
         list($token, $tokenHash) = hcp_new_token();
-        $created = hcp_with_users(function (array &$users) use ($firstName, $lastName, $email, $role, $password, $invite, $tokenHash) {
+        $created = hcp_with_users(function (array &$users) use ($firstName, $lastName, $email, $username, $role, $password, $invite, $mustChange, $tokenHash) {
             foreach ($users as $u) {
-                if ($u['email'] === $email) {
+                if ($email !== null && $u['email'] === $email) {
                     hcp_fail('EMAIL_TAKEN', '', 0, ['email' => 'Für diese E-Mail-Adresse gibt es bereits ein Konto.']);
                 }
+            }
+            if ($username !== null && hcp_find_username($users, $username) !== null) {
+                hcp_fail('USERNAME_TAKEN', 'Diesen Benutzernamen gibt es bereits.', 0, ['username' => 'Diesen Benutzernamen gibt es bereits.']);
             }
             $now = hcp_now();
             $user = hcp_normalize_user([
                 'id' => hcp_new_id(),
                 'email' => $email,
-                'username' => null,
+                'username' => $username,
                 'firstName' => $firstName,
                 'lastName' => $lastName,
                 'role' => $role,
                 'status' => 'ACTIVE',
                 'emailVerified' => true,
                 'emailVerifiedAt' => $now,
-                'mustChangePassword' => !$invite,
+                'mustChangePassword' => $mustChange,
                 // Einladung: zufälliges Passwort, der Benutzer legt über den Link ein eigenes fest
                 'passwordHash' => password_hash($invite ? bin2hex(random_bytes(24)) : $password, PASSWORD_DEFAULT),
                 'passwordChangedAt' => $now,
@@ -388,13 +403,13 @@ switch ($action) {
             $doc = hcp_default_member_doc($created['id']);
         });
         $mailSent = null;
-        if ($invite) {
+        if ($invite && $email !== null) {
             $s = hcp_settings();
             $link = hcp_site_url($config) . '/reset-password/?token=' . rawurlencode($token) . '&invite=1';
             $mailSent = hcp_send_mail($config, $email, 'Einladung: ' . $s['siteName'], 'Hallo ' . $firstName . ",\n\nfür dich wurde ein Zugang zu " . $s['siteName'] . " angelegt.\n"
                 . "Über diesen Link legst du dein Passwort fest:\n\n" . $link . "\n\nDer Link ist 7 Tage gültig.\n");
         }
-        hcp_audit('USER_CREATED', $actor, ['userId' => $created['id'], 'entityType' => 'user', 'entityId' => $created['id'], 'newValue' => ['email' => $email, 'role' => $role, 'invite' => $invite]]);
+        hcp_audit('USER_CREATED', $actor, ['userId' => $created['id'], 'entityType' => 'user', 'entityId' => $created['id'], 'newValue' => ['email' => $email, 'username' => $username, 'role' => $role, 'invite' => $invite]]);
         hcp_json(['user' => adm_user_row($created, 0), 'invite' => $invite, 'mailSent' => $mailSent], 201);
         break;
 
@@ -409,7 +424,7 @@ switch ($action) {
                 if ($u['id'] !== $target['id']) {
                     continue;
                 }
-                $profileOld = ['firstName' => $u['firstName'], 'lastName' => $u['lastName'], 'email' => $u['email']];
+                $profileOld = ['firstName' => $u['firstName'], 'lastName' => $u['lastName'], 'email' => $u['email'], 'username' => $u['username'] ?? null];
                 if (array_key_exists('firstName', $body)) {
                     $u['firstName'] = hcp_check_name((string)$body['firstName'], 'firstName');
                 }
@@ -425,7 +440,15 @@ switch ($action) {
                     }
                     $u['email'] = $email;
                 }
-                $profileNew = ['firstName' => $u['firstName'], 'lastName' => $u['lastName'], 'email' => $u['email']];
+                if (array_key_exists('username', $body) && trim((string)$body['username']) !== '' && strtolower(trim((string)$body['username'])) !== ($u['username'] ?? null)) {
+                    $username = hcp_check_username((string)$body['username']);
+                    $other = hcp_find_username($users, $username);
+                    if ($other !== null && $other['id'] !== $u['id']) {
+                        hcp_fail('USERNAME_TAKEN', 'Diesen Benutzernamen gibt es bereits.', 0, ['username' => 'Diesen Benutzernamen gibt es bereits.']);
+                    }
+                    $u['username'] = $username;
+                }
+                $profileNew = ['firstName' => $u['firstName'], 'lastName' => $u['lastName'], 'email' => $u['email'], 'username' => $u['username'] ?? null];
                 if ($profileNew !== $profileOld) {
                     $audits[] = ['USER_PROFILE_UPDATED', $profileOld, $profileNew];
                 }

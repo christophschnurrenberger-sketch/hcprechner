@@ -18,6 +18,9 @@ const HCP_SESSION_DAYS = 14;
 const HCP_USER_DATA_MAX = 5 * 1024 * 1024;
 const HCP_EMAIL_PATTERN = '/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/';
 const HCP_PASSWORD_MIN = 8;
+/** Benutzername für Konten ohne E-Mail-Adresse – wie USERNAME_PATTERN in src/lib/auth/validation.ts */
+const HCP_USERNAME_PATTERN = '/^[a-z0-9][a-z0-9._-]{2,31}$/';
+const HCP_USERNAME_RULE = '3–32 Zeichen: Buchstaben a–z (ohne Umlaute), Ziffern sowie . _ - (am Anfang ein Buchstabe oder eine Ziffer).';
 
 /** Rollen → Berechtigungen (identisch zu src/lib/auth/permissions.ts). */
 function hcp_role_permissions(): array
@@ -73,7 +76,7 @@ function hcp_fail(string $code, string $message = '', int $status = 0, ?array $f
     $defaults = [
         'UNAUTHENTICATED' => 401, 'SESSION_EXPIRED' => 401, 'INVALID_CREDENTIALS' => 401, 'FORBIDDEN' => 403,
         'EMAIL_NOT_VERIFIED' => 403, 'ACCOUNT_DISABLED' => 403, 'ACCOUNT_LOCKED' => 403, 'REGISTRATION_CLOSED' => 403,
-        'NOT_FOUND' => 404, 'ROUND_NOT_FOUND' => 404, 'CONFLICT' => 409, 'EMAIL_TAKEN' => 409, 'RATE_LIMITED' => 429,
+        'NOT_FOUND' => 404, 'ROUND_NOT_FOUND' => 404, 'CONFLICT' => 409, 'EMAIL_TAKEN' => 409, 'USERNAME_TAKEN' => 409, 'RATE_LIMITED' => 429,
         'SERVER' => 500,
     ];
     $body = ['error' => $code];
@@ -559,6 +562,30 @@ function hcp_check_email(string $email): string
     return $email;
 }
 
+function hcp_check_username(string $username): string
+{
+    $username = strtolower(trim($username));
+    if (!preg_match(HCP_USERNAME_PATTERN, $username)) {
+        hcp_fail('VALIDATION', HCP_USERNAME_RULE, 0, ['username' => HCP_USERNAME_RULE]);
+    }
+    return $username;
+}
+
+/** Konto zu einem Benutzernamen – ohne Beachtung der Groß-/Kleinschreibung (Konten der Version 1). */
+function hcp_find_username(array $users, string $username): ?array
+{
+    $username = strtolower(trim($username));
+    if ($username === '') {
+        return null;
+    }
+    foreach ($users as $u) {
+        if (isset($u['username']) && strtolower((string)$u['username']) === $username) {
+            return $u;
+        }
+    }
+    return null;
+}
+
 function hcp_check_password(string $password, string $field = 'password'): void
 {
     if (strlen($password) < HCP_PASSWORD_MIN || strlen($password) > 200) {
@@ -695,6 +722,7 @@ function hcp_session_view(array &$config, array $user): array
     return [
         'id' => $user['id'],
         'email' => $user['email'],
+        'username' => $user['username'] ?? null,
         'firstName' => $user['firstName'],
         'lastName' => $user['lastName'],
         'role' => $user['role'],

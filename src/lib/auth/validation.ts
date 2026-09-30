@@ -8,12 +8,18 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 200;
 export const NAME_MAX_LENGTH = 60;
 
-export const emailSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .max(200, "Die E-Mail-Adresse ist zu lang.")
-  .regex(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/, "Bitte eine gültige E-Mail-Adresse eingeben.");
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const EMAIL_MESSAGE = "Bitte eine gültige E-Mail-Adresse eingeben.";
+
+export const emailSchema = z.string().trim().toLowerCase().max(200, "Die E-Mail-Adresse ist zu lang.").regex(EMAIL_PATTERN, EMAIL_MESSAGE);
+
+/**
+ * Benutzername für Konten ohne E-Mail-Adresse (legt nur der Admin an). Klein geschrieben, ohne „@“ – so ist bei der
+ * Anmeldung eindeutig, ob eine E-Mail-Adresse oder ein Benutzername gemeint ist. PHP: HCP_USERNAME_PATTERN.
+ */
+export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+export const USERNAME_RULE = "3–32 Zeichen: Buchstaben a–z (ohne Umlaute), Ziffern sowie . _ - (am Anfang ein Buchstabe oder eine Ziffer).";
+export const usernameSchema = z.string().trim().toLowerCase().regex(USERNAME_PATTERN, USERNAME_RULE);
 
 export const passwordSchema = z
   .string()
@@ -46,8 +52,8 @@ export const registerSchema = z
 export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const loginSchema = z.object({
-  /** E-Mail-Adresse (bei älteren, vom Admin angelegten Konten auch der Benutzername). */
-  email: z.string().trim().toLowerCase().min(1, "Bitte die E-Mail-Adresse eingeben."),
+  /** E-Mail-Adresse oder – bei vom Admin angelegten Konten ohne E-Mail – der Benutzername. */
+  email: z.string().trim().toLowerCase().min(1, "Bitte E-Mail-Adresse oder Benutzername eingeben."),
   password: z.string().min(1, "Bitte das Passwort eingeben."),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -64,7 +70,13 @@ export const changePasswordSchema = z
 export const profileSchema = z.object({
   firstName: nameSchema("den Vornamen"),
   lastName: nameSchema("den Nachnamen"),
-  email: emailSchema,
+  /** leer nur bei Konten mit Benutzername und ohne E-Mail-Adresse (eine vorhandene Adresse bleibt bestehen) */
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(200, "Die E-Mail-Adresse ist zu lang.")
+    .refine((v) => v === "" || EMAIL_PATTERN.test(v), EMAIL_MESSAGE),
   /** nur nötig, wenn sich die E-Mail-Adresse ändert */
   currentPassword: z.string().optional(),
 });

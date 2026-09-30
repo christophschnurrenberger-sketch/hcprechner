@@ -120,6 +120,13 @@ Golf- und Landclub Ottobeuren, Ratings noch nicht verifiziert). Aktueller Stand 
 
 - **Registrieren** (abschaltbar) mit E-Mail-Bestätigung; der Admin kann Konten auch direkt anlegen (Einladung per
   E-Mail oder temporäres Passwort mit Pflicht zum Wechsel). Selbst registrierte Konten erhalten immer die Rolle `USER`.
+- **Konten ohne E-Mail-Adresse (ab 2.5):** Für Freunde ohne E-Mail legt der Admin ein Konto nur mit **Benutzername und
+  Passwort** an (Admin → Benutzer → Benutzer anlegen → „Anmeldung mit: Benutzername (ohne E-Mail)“).
+  - Die Anmeldung erfolgt mit dem Benutzernamen; Groß-/Kleinschreibung spielt keine Rolle.
+  - Standardmäßig wählt der Freund bei der ersten Anmeldung ein eigenes Passwort; das lässt sich abwählen.
+  - „Passwort vergessen“ gibt es ohne E-Mail nicht; ein neues Passwort setzt der Admin im Benutzerdetail.
+  - Eine E-Mail-Adresse kann das Mitglied später im Profil ergänzen. Sie gilt erst nach Bestätigung; die Anmeldung
+    mit dem Benutzernamen bleibt möglich.
 - **Sitzung:** signiertes HttpOnly-Cookie (`SameSite=Lax`, `Secure` bei HTTPS, 14 Tage gleitend); kein Token in
   `localStorage`/`sessionStorage`. Änderungen brauchen zusätzlich den CSRF-Token (Header `X-CSRF-Token`, nur im
   Arbeitsspeicher). Passwortwechsel meldet alle Geräte ab.

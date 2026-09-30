@@ -2,7 +2,7 @@
 openapi: 3.1.0
 info:
   title: Golf HCP Rechner – WHS 2026 · API
-  version: 2.4.0
+  version: 2.5.0
   description: 'Schnittstelle zwischen Oberfläche und Backend. Die Oberfläche greift ausschließlich über den API-Adapter
 
     (`src/lib/api/client.ts`) zu.
@@ -1113,7 +1113,7 @@ paths:
     post:
       tags:
       - auth
-      summary: Anmelden (E-Mail oder Benutzername älterer Konten)
+      summary: Anmelden mit E-Mail-Adresse oder Benutzername (Konten ohne E-Mail)
       description: Begrenzt auf 10 Fehlversuche je Anschluss und 8 je Konto in 15 Minuten. Gleiche Antwort und Laufzeit für falsches Passwort
         und unbekanntes Konto.
       x-webspace: POST api/auth.php?action=login
@@ -2036,16 +2036,47 @@ paths:
     post:
       tags:
       - admin
-      summary: 'Benutzer anlegen – ohne Passwort: Einladung per E-Mail'
-      description: 'Berechtigung: users.write; Rolle ungleich USER nur mit users.roles – Audit USER_CREATED'
+      summary: 'Benutzer anlegen – ohne Passwort: Einladung per E-Mail; ohne E-Mail: Benutzername + Passwort'
+      description: 'Berechtigung: users.write; Rolle ungleich USER nur mit users.roles – Audit USER_CREATED. Seit 2.5 auch ohne
+        E-Mail-Adresse (z. B. für Freunde): dann sind username und password Pflicht; Anmeldung mit dem Benutzernamen, kein
+        „Passwort vergessen“ (ein neues Passwort setzt der Admin).'
       security: *id002
       x-webspace: POST api/admin.php?action=user-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - firstName
+              - lastName
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                email:
+                  type: string
+                  description: leer bei Konten ohne E-Mail-Adresse
+                username:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9._-]{2,31}$
+                  description: Pflicht ohne E-Mail-Adresse; wird klein geschrieben gespeichert, eindeutig ohne Beachtung der Groß-/Kleinschreibung
+                role:
+                  $ref: '#/components/schemas/Role'
+                password:
+                  type: string
+                  description: leer = Einladung per E-Mail (nur mit E-Mail-Adresse)
+                mustChangePassword:
+                  type: boolean
+                  default: true
+                  description: bei der ersten Anmeldung ein eigenes Passwort wählen
       responses:
         '201':
           description: OK
         '403': *id001
         '409':
-          description: EMAIL_TAKEN
+          description: EMAIL_TAKEN bzw. USERNAME_TAKEN
   /api/admin/users/{id}:
     parameters:
     - name: id
@@ -2067,7 +2098,7 @@ paths:
     patch:
       tags:
       - admin
-      summary: Name, E-Mail, Rolle, Status ändern oder E-Mail bestätigen
+      summary: Name, E-Mail, Benutzername, Rolle, Status ändern oder E-Mail bestätigen
       description: 'Berechtigung: users.write (nur niedrigere Rollen, nie das eigene Konto); Rolle nur mit users.roles; das letzte Super-Admin-Konto
         ist geschützt – Audit je Änderung'
       security: *id002

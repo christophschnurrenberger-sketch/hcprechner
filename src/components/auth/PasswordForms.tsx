@@ -62,6 +62,7 @@ export function ForgotPasswordForm() {
           {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
           Link anfordern
         </Button>
+        <p className="text-sm text-ink-3">Du meldest dich mit einem Benutzernamen an und hast keine E-Mail-Adresse hinterlegt? Dann setzt dir der Administrator ein neues Passwort.</p>
       </form>
     </AuthCard>
   );

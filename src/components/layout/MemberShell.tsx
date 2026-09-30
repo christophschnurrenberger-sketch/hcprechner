@@ -67,7 +67,7 @@ function UserMenu() {
             <p className="truncate text-sm font-semibold text-ink">
               {user.firstName} {user.lastName}
             </p>
-            <p className="truncate text-xs text-ink-3">{user.email}</p>
+            <p className="truncate text-xs text-ink-3">{user.email ?? user.username}</p>
           </div>
           <Link role="menuitem" href="/member/profile" onClick={() => setOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink">
             <UserCircle className="h-4 w-4" aria-hidden /> Profil & Konto

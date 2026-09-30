@@ -587,6 +587,33 @@ async function waitPath(page, re, timeout = 15000) {
     check("I: fremde Runde löschen → nicht gefunden", foreign.status === 404, `HTTP ${foreign.status}`);
   }
 
+  // Konto ohne E-Mail-Adresse (z. B. für Freunde): Benutzername + Passwort, Anmeldung mit dem Benutzernamen
+  await admin.goto(`${BASE}/admin/users/new/`);
+  await admin.fill("#n-first", "Frank");
+  await admin.fill("#n-last", "Freund");
+  await admin.getByRole("radio", { name: "Benutzername (ohne E-Mail)" }).click();
+  await admin.fill("#n-username", "Frank.Freund");
+  await admin.fill("#n-pw", "Freund-Passwort-1");
+  await admin.uncheck("#n-must-change");
+  await admin.click("form button[type=submit]");
+  await admin.waitForSelector("text=Frank Freund");
+  check("G: Konto ohne E-Mail (Benutzername + Passwort) angelegt", await visible(admin.locator("text=Benutzername frank.freund").first(), 10000));
+  const friendCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const fr = await friendCtx.newPage();
+  watch(fr, "friend");
+  await login(fr, "frank.freund", "Freund-Passwort-1");
+  await waitPath(fr, /\/member\/welcome/);
+  const frMe = await call(fr, EDITION === "webspace" ? "/api/auth.php?action=me" : "/api/auth/me", "GET", undefined, false);
+  check("Anmeldung mit Benutzername (ohne E-Mail, ohne Passwortwechsel)", frMe.json?.user?.username === "frank.freund" && frMe.json?.user?.email === null && frMe.json?.user?.mustChangePassword === false, JSON.stringify(frMe.json?.user ?? {}).slice(0, 160));
+  await fr.getByRole("button", { name: "Weiter", exact: true }).click();
+  await fr.click("text=Überspringen");
+  await waitPath(fr, /^\/member\/?$/);
+  await fr.goto(`${BASE}/member/profile/`);
+  await fr.fill("#p-first", "Franky");
+  await fr.click("form:has(#p-first) button[type=submit]");
+  check("Profil ohne E-Mail-Adresse speicherbar", await visible(fr.locator("text=Gespeichert.").first(), 10000) && (await fr.locator("#p-username").inputValue()) === "frank.freund");
+  await friendCtx.close();
+
   // ---------------------------------------------------------------- L: Community aus Sicht eines anderen Mitglieds
   const act = await call(o, api.activity, "GET", undefined, false);
   const items = act.json?.items ?? [];

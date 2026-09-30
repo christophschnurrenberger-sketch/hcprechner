@@ -3,7 +3,7 @@
  *
  * GET    /api/admin/stats                         admin.access
  * GET    /api/admin/users?q&role&status&verified&sort&page&pageSize   users.read
- * POST   /api/admin/users                         users.write (Rolle ≠ USER: users.roles)
+ * POST   /api/admin/users                         users.write (Rolle ≠ USER: users.roles); E-Mail und/oder Benutzername
  * GET    /api/admin/users/:id                     users.read   (Audit: USER_DATA_VIEWED)
  * PATCH  /api/admin/users/:id                     users.write  (Rolle: users.roles)
  * POST   /api/admin/users/:id/password            users.write  { mode: "mail"|"temporary", password? }
@@ -30,7 +30,7 @@ import { errorLog, mailLog, users, type UserRow } from "@/db/schema";
 import { apiError } from "@/lib/api/errors";
 import type { AdminRoundRow, AdminSettings, AdminStats, AdminUserDetail, SystemStatus } from "@/lib/api/types";
 import { canAssignRole, canManageUser, can, isRole, USER_STATUSES, type Permission, type Role } from "@/lib/auth/permissions";
-import { emailSchema, passwordSchema } from "@/lib/auth/validation";
+import { emailSchema, passwordSchema, USERNAME_RULE, usernameSchema } from "@/lib/auth/validation";
 import type { AuditAction } from "@/lib/audit/actions";
 import { adminRoundDetail, adminUserDetail } from "@/lib/member/admin";
 import { activeRounds, type MemberDoc } from "@/lib/member/doc";
@@ -50,7 +50,7 @@ import { getSettings, mailInfo, saveSettings, siteUrl } from "@/server/settings"
 import { syncCommunitySafe } from "@/server/community";
 import { adminCommunityOverview, adminCommunityRanking, adminPublicRounds, hideUserCommunity, moderateRound, refreshRanking } from "@/server/communityAdmin";
 import type { CommunityFlags } from "@/lib/community/types";
-import { adminRow, allMemberDocs, countActiveSuperAdmins, createToken, listUsers, updateUser, userByEmail, userById } from "@/server/users";
+import { adminRow, allMemberDocs, countActiveSuperAdmins, createToken, listUsers, updateUser, userByEmail, userById, userByUsername } from "@/server/users";
 
 export const dynamic = "force-dynamic";
 
@@ -152,36 +152,50 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       const firstName = str(body, "firstName", 60);
       const lastName = str(body, "lastName", 60);
       if (!firstName || !lastName) throw apiError("VALIDATION", "Bitte Vor- und Nachnamen angeben.", { ...(firstName ? {} : { firstName: "Bitte ausfüllen." }), ...(lastName ? {} : { lastName: "Bitte ausfüllen." }) });
-      const email = emailSchema.safeParse(str(body, "email", 200));
-      if (!email.success) throw apiError("VALIDATION", "Bitte eine gültige E-Mail-Adresse eingeben.", { email: "Bitte eine gültige E-Mail-Adresse eingeben." });
+      // Anmeldung per E-Mail-Adresse und/oder Benutzername – ohne E-Mail (z. B. für Freunde) mit Benutzername + Passwort
+      const emailRaw = str(body, "email", 200);
+      const usernameRaw = str(body, "username", 64);
+      if (!emailRaw && !usernameRaw) throw apiError("VALIDATION", "Bitte eine E-Mail-Adresse oder einen Benutzernamen angeben.", { email: "Bitte ausfüllen.", username: "Bitte ausfüllen." });
+      const email = emailRaw ? emailSchema.safeParse(emailRaw) : null;
+      if (email && !email.success) throw apiError("VALIDATION", "Bitte eine gültige E-Mail-Adresse eingeben.", { email: "Bitte eine gültige E-Mail-Adresse eingeben." });
+      const username = usernameRaw ? usernameSchema.safeParse(usernameRaw) : null;
+      if (username && !username.success) throw apiError("VALIDATION", USERNAME_RULE, { username: USERNAME_RULE });
       const role = (str(body, "role", 20) || "USER") as Role;
       if (!isRole(role)) throw apiError("VALIDATION", "Unbekannte Rolle", { role: "Unbekannte Rolle" });
       if (role !== "USER" && !canAssignRole(actorOf(actor), { id: "", role: "USER" }, role)) throw apiError("FORBIDDEN", "Diese Rolle darfst du nicht vergeben.");
       const password = typeof body.password === "string" ? body.password : "";
       const invite = password === "";
-      if (!invite) passwordSchema.parse(password);
-      if (await userByEmail(email.data)) throw apiError("EMAIL_TAKEN", undefined, { email: "Für diese E-Mail-Adresse gibt es bereits ein Konto." });
+      if (invite && !email) throw apiError("VALIDATION", "Ohne E-Mail-Adresse bitte ein Passwort festlegen.", { password: "Bitte ein Passwort festlegen." });
+      if (!invite) {
+        const pw = passwordSchema.safeParse(password);
+        if (!pw.success) throw apiError("VALIDATION", pw.error.issues[0].message, { password: pw.error.issues[0].message });
+      }
+      // Standard: bei der ersten Anmeldung ein eigenes Passwort wählen (der Admin kennt das vergebene)
+      const mustChangePassword = !invite && body.mustChangePassword !== false;
+      if (email && (await userByEmail(email.data))) throw apiError("EMAIL_TAKEN", undefined, { email: "Für diese E-Mail-Adresse gibt es bereits ein Konto." });
+      if (username && (await userByUsername(username.data))) throw apiError("USERNAME_TAKEN", undefined, { username: "Diesen Benutzernamen gibt es bereits." });
       const db = await getDb();
       const now = new Date();
       const [created] = await db
         .insert(users)
         .values({
-          email: email.data,
+          email: email?.data ?? null,
+          username: username?.data ?? null,
           firstName,
           lastName,
           role,
           status: "ACTIVE",
           emailVerified: true,
           emailVerifiedAt: now,
-          mustChangePassword: !invite,
+          mustChangePassword,
           passwordHash: await hashPassword(invite ? crypto.randomUUID() + crypto.randomUUID() : password),
           passwordChangedAt: now,
         })
         .returning();
       await createMemberDoc(created.id);
       let mailSent: boolean | null = null;
-      if (invite) mailSent = await sendInviteMail(created, email.data, await createToken(created.id, "RESET_PASSWORD", 7 * 24));
-      await audit("USER_CREATED", actor, { userId: created.id, entityType: "user", entityId: created.id, newValue: { email: email.data, role, invite } });
+      if (invite && email) mailSent = await sendInviteMail(created, email.data, await createToken(created.id, "RESET_PASSWORD", 7 * 24));
+      await audit("USER_CREATED", actor, { userId: created.id, entityType: "user", entityId: created.id, newValue: { email: email?.data ?? null, username: username?.data ?? null, role, invite } });
       return json({ user: await adminRow(created), invite, mailSent }, 201);
     }
     if (a && !b && method === "GET") {
@@ -204,7 +218,7 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       const body = await readJson(req, 8000);
       const patch: Partial<typeof users.$inferInsert> = {};
       const audits: [AuditAction, unknown, unknown][] = [];
-      const profileOld = { firstName: u.firstName, lastName: u.lastName, email: u.email };
+      const profileOld = { firstName: u.firstName, lastName: u.lastName, email: u.email, username: u.username };
       const profileNew = { ...profileOld };
       if ("firstName" in body) profileNew.firstName = patch.firstName = str(body, "firstName", 60) || u.firstName;
       if ("lastName" in body) profileNew.lastName = patch.lastName = str(body, "lastName", 60) || u.lastName;
@@ -214,6 +228,13 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
         const taken = await userByEmail(email.data);
         if (taken && taken.id !== u.id) throw apiError("EMAIL_TAKEN", undefined, { email: "Diese E-Mail-Adresse wird bereits verwendet." });
         profileNew.email = patch.email = email.data;
+      }
+      if (typeof body.username === "string" && body.username.trim() && body.username.trim().toLowerCase() !== u.username) {
+        const username = usernameSchema.safeParse(body.username);
+        if (!username.success) throw apiError("VALIDATION", USERNAME_RULE, { username: USERNAME_RULE });
+        const taken = await userByUsername(username.data);
+        if (taken && taken.id !== u.id) throw apiError("USERNAME_TAKEN", undefined, { username: "Diesen Benutzernamen gibt es bereits." });
+        profileNew.username = patch.username = username.data;
       }
       if (JSON.stringify(profileNew) !== JSON.stringify(profileOld)) audits.push(["USER_PROFILE_UPDATED", profileOld, profileNew]);
       if (typeof body.role === "string" && body.role !== u.role) {
@@ -273,7 +294,7 @@ async function dispatch(req: Request, path: string[]): Promise<Response> {
       const { doc } = await loadMemberDoc(u.id);
       const db = await getDb();
       await db.delete(users).where(eq(users.id, u.id));
-      await audit("USER_DELETED", actor, { userId: u.id, entityType: "user", entityId: u.id, oldValue: { email: u.email, name: `${u.firstName} ${u.lastName}`.trim(), role: u.role, rounds: activeRounds(doc).length } });
+      await audit("USER_DELETED", actor, { userId: u.id, entityType: "user", entityId: u.id, oldValue: { email: u.email, username: u.username, name: `${u.firstName} ${u.lastName}`.trim(), role: u.role, rounds: activeRounds(doc).length } });
       return json({ ok: true });
     }
   }

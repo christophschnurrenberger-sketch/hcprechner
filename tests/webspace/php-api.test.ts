@@ -209,6 +209,43 @@ describe.skipIf(!hasPhp)("Webspace-Backend (PHP)", () => {
     expect((maxDoc.json?.doc as { rounds: { date: string }[] }).rounds[0].date).toBe("2026-05-01");
   });
 
+  it("Konto ohne E-Mail: Admin legt Benutzername + Passwort an, Anmeldung mit dem Benutzernamen", async () => {
+    const create = (body: Record<string, unknown>) => admin.req("/api/admin.php?action=user-create", { body: { firstName: "Frank", lastName: "Freund", role: "USER", ...body } });
+    // weder E-Mail noch Benutzername, ungültiger Name, ohne Passwort, Mitglied als Anleger → abgelehnt
+    expect((await create({ password: "Freund-Passwort-1" })).json?.error).toBe("VALIDATION");
+    expect((await create({ username: "fr", password: "Freund-Passwort-1" })).json?.fields).toHaveProperty("username");
+    expect((await create({ username: "frank@home", password: "Freund-Passwort-1" })).json?.fields).toHaveProperty("username");
+    expect((await create({ username: "frank", password: "" })).json?.fields).toHaveProperty("password");
+    expect((await max.req("/api/admin.php?action=user-create", { body: { firstName: "X", lastName: "Y", username: "hacker", password: "Freund-Passwort-1" } })).status).toBe(403);
+
+    const created = await create({ username: " Frank.Freund ", password: "Freund-Passwort-1", mustChangePassword: false });
+    expect(created.status).toBe(201);
+    expect(created.json?.user).toMatchObject({ email: null, username: "frank.freund" });
+    expect(created.json?.invite).toBe(false);
+    expect((await create({ username: "FRANK.FREUND", password: "Freund-Passwort-1" })).json?.error).toBe("USERNAME_TAKEN");
+
+    const frank = new Client();
+    expect((await frank.login("frank.freund", "falsch-falsch")).json?.error).toBe("INVALID_CREDENTIALS");
+    const login = await frank.login("Frank.Freund", "Freund-Passwort-1");
+    expect(login.status).toBe(200);
+    expect(login.json?.user).toMatchObject({ email: null, username: "frank.freund", role: "USER", mustChangePassword: false });
+    // Profil ohne E-Mail-Adresse speicherbar; eine neue Adresse gilt erst nach Bestätigung, die Anmeldung bleibt möglich
+    const saved = await frank.req("/api/auth.php?action=update-profile", { body: { firstName: "Franky", lastName: "Freund", email: "" } });
+    expect(saved.status).toBe(200);
+    expect(saved.json?.user).toMatchObject({ firstName: "Franky", email: null });
+    const withMail = await frank.req("/api/auth.php?action=update-profile", { body: { firstName: "Franky", lastName: "Freund", email: "frank@example.de", currentPassword: "Freund-Passwort-1" } });
+    expect(withMail.json?.pendingEmail).toBe("frank@example.de");
+    expect((await new Client().login("frank.freund", "Freund-Passwort-1")).status).toBe(200);
+    // Standard: vorläufiges Passwort → Wechsel bei der ersten Anmeldung
+    await create({ firstName: "Grete", username: "grete", password: "Grete-Passwort-1" });
+    expect(((await new Client().login("grete", "Grete-Passwort-1")).json?.user as { mustChangePassword: boolean }).mustChangePassword).toBe(true);
+    // Benutzername im Admin-Bereich ändern (eindeutig)
+    const id = (created.json?.user as { id: string }).id;
+    expect((await admin.req("/api/admin.php?action=user-update", { body: { id, username: "grete" } })).json?.error).toBe("USERNAME_TAKEN");
+    expect(((await admin.req("/api/admin.php?action=user-update", { body: { id, username: "frank" } })).json?.user as { username: string }).username).toBe("frank");
+    expect((await new Client().login("frank", "Freund-Passwort-1")).status).toBe(200);
+  });
+
   it("Admin-API: Mitglieder erhalten 403, Admins sehen Daten nur mit Audit-Eintrag", async () => {
     expect((await max.req("/api/admin.php?action=users", { body: {} })).status).toBe(403);
     expect((await max.req("/api/admin.php?action=courses-save", { body: {} })).status).toBe(403);
