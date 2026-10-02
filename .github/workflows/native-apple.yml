@@ -1,0 +1,90 @@
+# Native Apple-Apps (native/apple): Swift-Paket auf Linux und macOS testen, Xcode-Projekt erzeugen und die
+# iPhone-Apps bauen. Die Golf-App (GolfApp) bekommt zusätzlich einen UI-Rauchtest auf dem Simulator.
+# Keine Signierung, keine Geheimnisse: Es wird nur für den Simulator bzw. generisch gebaut.
+name: Native Apple
+
+on:
+  push:
+    paths:
+      - "native/apple/**"
+      - ".github/workflows/native-apple.yml"
+  pull_request:
+    paths:
+      - "native/apple/**"
+      - ".github/workflows/native-apple.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-apple-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-linux:
+    name: Swift-Paket (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1-noble
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: swift test --package-path native/apple/HCPGolfKit
+
+  golf-app:
+    name: GolfApp (iOS)
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: native/apple
+    steps:
+      - uses: actions/checkout@v4
+      - name: Werkzeuge
+        run: |
+          xcodebuild -version
+          swift --version
+          brew install xcodegen
+          # Bei Fehlern weiterbauen, damit ein Lauf möglichst alle Fehler zeigt
+          defaults write com.apple.dt.Xcode IDEBuildingContinueBuildingAfterErrors -bool YES
+      - name: Texte (String-Katalog) prüfen
+        run: python3 scripts/strings.py --check
+      - name: Swift-Paket testen (macOS, mit SwiftData)
+        run: swift test --package-path HCPGolfKit
+      - name: Xcode-Projekt erzeugen
+        run: xcodegen generate
+      - name: GolfApp bauen
+        run: scripts/xcodebuild-log.sh build -project HCPGolf.xcodeproj -scheme GolfApp -destination "generic/platform=iOS Simulator" -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+      - name: UI-Rauchtest auf dem Simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 scripts/pick-simulator.py)
+          echo "Simulator: $UDID"
+          scripts/xcodebuild-log.sh test -project HCPGolf.xcodeproj -scheme GolfApp -destination "id=$UDID" -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+      - name: Protokolle sichern
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golfapp-logs
+          path: |
+            native/apple/xcodebuild-*.log
+          if-no-files-found: ignore
+
+  companion:
+    name: HCPCompanion + Watch
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: native/apple
+    steps:
+      - uses: actions/checkout@v4
+      - name: Werkzeuge
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+          defaults write com.apple.dt.Xcode IDEBuildingContinueBuildingAfterErrors -bool YES
+      - name: Xcode-Projekt erzeugen
+        run: xcodegen generate
+      - name: HCPCompanion mit Watch-App bauen
+        run: scripts/xcodebuild-log.sh build -project HCPGolf.xcodeproj -scheme HCPCompanion -destination "generic/platform=iOS Simulator" -derivedDataPath build CODE_SIGNING_ALLOWED=NO

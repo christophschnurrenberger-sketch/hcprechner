@@ -9,4 +9,9 @@ HCP_BASE_URL =
 HCP_BUNDLE_ID = de.example.golfhcp
 DEVELOPMENT_TEAM =
 CODE_SIGN_STYLE = Automatic
-SWIFT_VERSION = 5.9
+// Swift-Sprachmodus 5 (Compiler Swift 6); Xcode kennt nur 4.0, 4.2, 5.0 und 6.0
+SWIFT_VERSION = 5.0
+
+// Native Golf-App: Name auf dem Homescreen (Arbeitstitel – hier und in GolfApp/App/AppBrand.swift ändern) und Bundle-ID
+GOLF_APP_DISPLAY_NAME = Carry
+GOLF_APP_BUNDLE_ID = de.example.carry

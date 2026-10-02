@@ -1,7 +1,7 @@
 import Foundation
 
 /// WGS-84-Koordinate in Dezimalgrad.
-public struct GeoPoint: Codable, Equatable, Sendable {
+public struct GeoPoint: Codable, Hashable, Sendable {
     public var latitude: Double
     public var longitude: Double
 

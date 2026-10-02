@@ -1,0 +1,10 @@
+# Von XcodeGen erzeugt (xcodegen generate) – nicht einchecken
+HCPGolf.xcodeproj/
+# Xcode und SwiftPM
+build/
+xcuserdata/
+*.xcresult
+xcodebuild-*.log
+HCPGolfKit/.build/
+HCPGolfKit/.swiftpm/
+__pycache__/

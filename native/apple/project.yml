@@ -1,11 +1,16 @@
 # XcodeGen-Projekt (https://github.com/yonaskolb/XcodeGen, ab 2.38): `xcodegen generate` erzeugt HCPGolf.xcodeproj.
-# iPhone-App „Golf HCP“ (Web-App + Watch-Anbindung) mit eingebetteter Apple-Watch-App; gemeinsame Logik in HCPGolfKit.
+#
+#  GolfApp        native iPhone-App (Golf-GPS, Scorecard, Handicap) – Arbeitstitel „Carry“, siehe Config/Base.xcconfig
+#  HCPCompanion   iPhone-App „Golf HCP“ (Web-App in WKWebView + Watch-Anbindung, Version 2.4)
+#  HCPWatch       Apple-Watch-App zur Web-App (Version 2.4)
+# Gemeinsame Logik im lokalen Swift-Paket HCPGolfKit (Produkte HCPGolfKit, GolfCore, GolfDemo, GolfPersistence).
 name: HCPGolf
 options:
   deploymentTarget:
     iOS: "17.0"
     watchOS: "10.0"
   createIntermediateGroups: true
+  developmentLanguage: de
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
@@ -13,6 +18,54 @@ packages:
   HCPGolfKit:
     path: HCPGolfKit
 targets:
+  GolfApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: GolfApp
+    dependencies:
+      - package: HCPGolfKit
+        product: GolfCore
+      - package: HCPGolfKit
+        product: GolfDemo
+      - package: HCPGolfKit
+        product: GolfPersistence
+      - package: HCPGolfKit
+        product: HCPGolfKit
+    info:
+      path: GolfApp/Info.plist
+      properties:
+        CFBundleDisplayName: $(GOLF_APP_DISPLAY_NAME)
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        CFBundleLocalizations: [de, en, fr, it, es]
+        ITSAppUsesNonExemptEncryption: false
+        NSLocationWhenInUseUsageDescription: Während einer Runde zeigt die App deine Entfernung zum Grün und zu Hindernissen und erkennt das nächste Loch. Der Standort bleibt auf dem Gerät; es wird kein Bewegungsprofil gespeichert.
+        UIBackgroundModes: [location]
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSupportsIndirectInputEvents: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(GOLF_APP_BUNDLE_ID)
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        LOCALIZATION_PREFERS_STRING_CATALOGS: "YES"
+        ENABLE_PREVIEWS: "YES"
+  GolfAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: GolfAppUITests
+    dependencies:
+      - target: GolfApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(GOLF_APP_BUNDLE_ID).uitests
+        TEST_TARGET_NAME: GolfApp
   HCPCompanion:
     type: application
     platform: iOS
@@ -53,6 +106,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(HCP_BUNDLE_ID).watchkitapp
 schemes:
+  GolfApp:
+    build:
+      targets:
+        GolfApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [GolfAppUITests]
   HCPCompanion:
     build:
       targets:

@@ -1,0 +1,24 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "NSLocationWhenInUseUsageDescription": {
+      "comment": "Begründung für die Standortfreigabe (Systemdialog)",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Während einer Runde zeigt die App deine Entfernung zum Grün und zu Hindernissen und erkennt das nächste Loch. Der Standort bleibt auf dem Gerät; es wird kein Bewegungsprofil gespeichert."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "During a round the app shows your distance to the green and to hazards and detects the next hole. Your location stays on the device; no movement history is stored."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
