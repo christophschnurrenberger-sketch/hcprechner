@@ -5,6 +5,31 @@ Statistik, Community, Ablauf der mobilen Scorecard, idempotentes Speichern, GPS/
 TypeScript ↔ PHP, Node-API mit PGlite und PHP-API gegen `php -S`), ESLint und TypeScript ohne Befund, Node-Build
 (standalone) und Webspace-ZIP erfolgreich.
 
+## Native Golf-App fürs iPhone – Phase 1 (Master-Prompt §86)
+
+CI `.github/workflows/native-apple.yml` (GitHub Actions, macOS 15, Xcode 16.4): Swift-Paket **102 Tests** (100 auf
+Linux, dazu 2 SwiftData-Tests auf macOS), String-Katalog geprüft (406 Texte, de/en), `GolfApp` sowie `HCPCompanion` +
+`HCPWatch` für den Simulator gebaut (ohne Compiler-Warnungen aus eigenem Code), UI-Rauchtest auf dem Simulator grün
+(iPhone SE 3. Generation, iOS 26.2). Konzept und Status: [`NATIVE-APP.md`](NATIVE-APP.md).
+
+| Punkt (§86) | Status | Nachweis |
+|---|---|---|
+| 1 Projektstruktur | ✅ | `native/apple/GolfApp` (App, Core, Features), Paket-Ziele `GolfCore`, `GolfDemo`, `GolfPersistence`, XcodeGen `project.yml` |
+| 2 Datenmodelle | ✅ | `GolfCore/Models` (Platz, Abschlag, Rating mit Prüfstand, Loch mit Grün und Hindernissen, Runde, Score); `CourseAndSetupTests` |
+| 3 Design-System | ✅ | `Core/DesignSystem` (Tokens, Farben hell/dunkel, PrimaryButton … GolfTabBar, BottomSheet), Karte `Core/Map/HoleMapView`; Galerie im Entwicklermenü |
+| 4 Demo-Daten | ✅ | drei fiktive Plätze (18, 9, 18 Loch mit Seen), Ratings als `fictional`, zählen nie; `DemoCourseTests` (Lochdaten, Wege, keine Überlappung) |
+| 5 Navigation | ✅ | 5 Tabs, Routen je Tab, Rundenmodus als Vollbild (minimieren/fortsetzen); UI-Rauchtest |
+| 6 Home | ✅ | Runde starten/fortsetzen, HCPI, Kennzahlen, zuletzt/Favoriten, letzte Runde, Sync-Status |
+| 7 Platzsuche | ✅ | Suche (Umlaute, Teilwörter), Filter, Favoriten, offline aus dem Speicher; `testSearchRanksNamePrefixFirstThenDistance`, `testCourseRepositoryFallsBackToCacheOffline` |
+| 8 Platzvorschau | ✅ | Lochkarte (Vektor/Satellit), Messen, Zwei-Punkt-Messung, Strategie je Loch |
+| 9 Rundeneinrichtung | ✅ | nur mögliche Optionen (Löcher, Spielform, Handicap); `testHoleSelectionsDependOnData`, `testRatingIsNeverDerived`, `testDemoCourseNeverCounts` |
+| 10 Rundenbildschirm | ✅ | Front/Mitte/Back, Hindernisse, Karte, automatischer Lochwechsel; `testAutoHoleChangeFollowsAWholeRound`, `testWeakGPSAndJumpsNeverCauseWrongChanges` |
+| 11 Scorekarte | ✅ | Score-Assistent, Netto, Stableford, Lochspiel, Leaderboard, Score Differential; `ScoringTests`, `WHSRulesTests` (Testwerte der Web-App), `testFullRoundOfflineToSummary` |
+| Kompilieren | ✅ | CI: `GolfApp`, `HCPCompanion`, `HCPWatch` |
+| Ausführbar | ✅ | UI-Rauchtest `GolfAppUITests`: App starten → Runde einrichten → Rundenbildschirm → Score erfassen → minimieren → fortsetzen (Simulator, simuliertes GPS) |
+| Was funktioniert / Mock / fehlende Dienste / nächste Phasen | ✅ | `NATIVE-APP.md`; Mocks im Code gekennzeichnet (`AppEnvironment`, `MockGolfCourseDataProvider`, `InMemoryRemoteRoundService`) |
+| Echte Geräte, Platz, Watch v2, Backend, StoreKit | offen | nächste Phasen laut `NATIVE-APP.md` |
+
 ## Version 2.5 – Konten ohne E-Mail-Adresse
 
 Browser-Abläufe gegen beide Editionen: **Node 133/133** und **Webspace 132/132** (ZIP 2.5.0 auf dem IONOS-ähnlichen

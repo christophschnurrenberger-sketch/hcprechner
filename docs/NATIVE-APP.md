@@ -5,13 +5,15 @@ Eigenständige iPhone-App mit Golf-GPS, Scorekarte und Handicap-Rechnung je Rund
 (SwiftUI) und das Swift-Paket `native/apple/HCPGolfKit` (Logik, ohne UI).
 
 > **Stand:** Phase 1 laut Master-Prompt §86 (Projektstruktur, Datenmodelle, Design-System, Demo-Daten, Navigation,
-> Start, Platzsuche, Platzvorschau, Rundeneinrichtung, Rundenbildschirm, Scorekarte). Die App wird in der CI auf
-> macOS mit Xcode gebaut und auf dem iPhone-Simulator mit einem UI-Rauchtest gestartet
-> (`.github/workflows/native-apple.yml`). Auf echten Geräten und auf dem Platz ist sie noch **nicht** getestet.
+> Start, Platzsuche, Platzvorschau, Rundeneinrichtung, Rundenbildschirm, Scorekarte). Die CI
+> (`.github/workflows/native-apple.yml`) baut die App mit Xcode 16.4 ohne Warnungen aus eigenem Code und startet sie
+> auf dem iPhone-Simulator mit einem UI-Rauchtest (grün). Auf echten Geräten und auf dem Platz ist sie noch **nicht**
+> getestet.
 
 Die bestehende Web-App und die iPhone-/Watch-Begleit-App „Golf HCP“ (`native/apple/Companion`, `Watch`, siehe
-[`native/apple/README.md`](../native/apple/README.md)) bleiben unverändert. Die neue App teilt mit ihnen nur die
-WHS-Regeln (gleiche Testwerte) und die Geodäsie aus `HCPGolfKit`.
+[`native/apple/README.md`](../native/apple/README.md)) bleiben funktional unverändert; im Companion wurde nur ein
+Compilerfehler behoben, der erst mit dem CI-Build sichtbar wurde. Die neue App teilt mit ihnen nur die WHS-Regeln
+(gleiche Testwerte) und die Geodäsie aus `HCPGolfKit`.
 
 ## Grundsätze
 
