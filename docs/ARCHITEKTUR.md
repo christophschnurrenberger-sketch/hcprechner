@@ -213,6 +213,23 @@ Geolocation ─► LocationService ─► PositionFilter ─► DistanceEngine �
   `tests/fixtures/gps-vectors.json`.
 - Details: `docs/GPS-DISTANZ.md`, native Apps: `native/apple/README.md`.
 
+## Native Golf-App (iPhone, Phase 1)
+
+```
+GolfApp (SwiftUI) ──► AppEnvironment ──► CourseRepository ──► GolfCourseDataProvider (Mock: Demo-Plätze) + CourseCache
+                            │        └──► RoundRepository ───► RoundStore (SwiftData) + Ausgang ──► SyncEngine ──► RemoteRoundService (Mock)
+                            └──► LocationHub (CoreLocation bzw. Simulator) ──► GolfCore: Entfernungen, Lochwechsel
+```
+
+- Eigenständige App in `native/apple/GolfApp`; die Logik liegt im Swift-Paket `native/apple/HCPGolfKit`
+  (`GolfCore` nur mit Foundation, getestet auf Linux und macOS). Views rechnen nichts.
+- WHS je Runde (Course/Playing Handicap, Netto-Doppelbogey, Stableford, Score Differential, 9-Loch-Methode) ist eine
+  Portierung von `src/rules/whs/de/2026` mit denselben Testwerten; Regelzahlen nur in `WHSRuleSet`, Rundung nur in
+  `WHSRounding`. Ratings werden nie abgeleitet; fehlende Werte bleiben `nil`.
+- Offline-first: Runde als Dokument mit Feld-Zeitstempeln (hybride logische Uhr), Zusammenführen je Feld,
+  Löschen gewinnt. Server und Platzdaten sind in Phase 1 Mocks hinter Protokollen.
+- Details, Status (was funktioniert, was Mock ist, welche Dienste fehlen) und nächste Phasen: `docs/NATIVE-APP.md`.
+
 ## Diagrammfarben
 
 HCPI-Verlauf: Aktueller HCPI `#1f7a4d`, Low HCPI `#2a78d6`, kalkulierter HCPI `#eb6834` (dunkel: `#3fa56f`, `#3987e5`,

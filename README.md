@@ -42,6 +42,13 @@ CSV). Mitgeliefert werden keine. Für die Apple Watch liegen eine iPhone-App und
 (`native/apple/`, auf einem Mac zu bauen). Scorecard und WHS-Berechnung bleiben unverändert. Details:
 [`docs/GPS-DISTANZ.md`](docs/GPS-DISTANZ.md).
 
+**Native Golf-App fürs iPhone (Phase 1):** Unabhängig von der Web-App liegt unter `native/apple/GolfApp` eine
+eigene SwiftUI-App (Arbeitstitel „Carry“) mit GPS-Entfernungen (Front/Mitte/Back, Hindernisse, Karte), Platzsuche und
+-vorschau, Rundeneinrichtung, Rundenbildschirm mit automatischem Lochwechsel, Score-Eingabe als Assistent,
+Scorekarte (Zählspiel, Stableford, Lochspiel), Handicap-Rechnung je Runde nach WHS (DGV 2026) und Statistik – offline
+mit Synchronisation. Platzdaten und Server sind in Phase 1 Mocks (drei fiktive Demo-Plätze). Gebaut und getestet wird
+sie in der CI auf macOS. Details: [`docs/NATIVE-APP.md`](docs/NATIVE-APP.md).
+
 ## Auf den eigenen Webspace hochladen (ohne Node.js, ohne Datenbank)
 
 Für klassischen PHP-Webspace (Strato, IONOS, all-inkl, netcup, …) gibt es die **Webspace-Edition**:
@@ -151,6 +158,7 @@ API beider Editionen: [`docs/openapi.yaml`](docs/openapi.yaml). Das Frontend spr
 - [`docs/MOBILE-RUNDENEINGABE.md`](docs/MOBILE-RUNDENEINGABE.md) – mobile Scorecard: Ablauf, Offline-Entwurf, Wiederaufnahme, keine doppelten Runden, PWA
 - [`docs/GPS-DISTANZ.md`](docs/GPS-DISTANZ.md) – Entfernung zum Grün: Anzeige-Regeln, Datenschutz, Grün-Koordinaten (Admin, CSV), Apple Watch
 - [`native/apple/README.md`](native/apple/README.md) – iPhone-App und Apple-Watch-App: Aufbau, Protokoll, Energie, Bauen auf dem Mac
+- [`docs/NATIVE-APP.md`](docs/NATIVE-APP.md) – native Golf-App fürs iPhone: Aufbau, Funktionsumfang Phase 1, was Mock ist, fehlende Dienste, nächste Phasen
 - [`docs/openapi.yaml`](docs/openapi.yaml) – API (Auth, Mitglied, Community, Admin)
 - [`docs/WEBSPACE.md`](docs/WEBSPACE.md) – Webspace-Edition: Installation, Update, Sicherheit, Aufbau
 - [`docs/ABSCHLUSS-CHECK.md`](docs/ABSCHLUSS-CHECK.md) – Checkliste aus der Spezifikation mit Status

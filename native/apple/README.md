@@ -1,8 +1,21 @@
-# Apple Watch & iPhone-App (Golf-GPS)
+# Apple-Apps: Golf-App, iPhone-Begleit-App & Apple Watch
 
-> **Stand:** Quellcode für Xcode. In der Entwicklungsumgebung dieses Projekts (Linux, ohne Xcode/Swift-Toolchain)
-> konnte er **nicht kompiliert und nicht auf Geräten getestet** werden. Die Logik ist in `HCPGolfKit` gekapselt
-> und wird dort mit denselben Testwerten geprüft wie die Web-App (`swift test` auf einem Mac).
+> **Stand:** Quellcode für Xcode. Die CI (`.github/workflows/native-apple.yml`, GitHub Actions mit macOS und Xcode)
+> testet das Swift-Paket auf Linux und macOS, erzeugt das Projekt mit XcodeGen und baut alle drei Apps für den
+> Simulator; die Golf-App startet dort zusätzlich einen UI-Rauchtest. Auf echten Geräten ist **nichts getestet**.
+
+Das Xcode-Projekt (`project.yml`) enthält:
+
+| Ziel | Inhalt | Doku |
+|---|---|---|
+| `GolfApp` | **neue native Golf-App** (Arbeitstitel „Carry“): GPS-Entfernungen, Platzsuche und -vorschau, Rundeneinrichtung, Rundenbildschirm, Score-Eingabe, Scorekarte, Statistik, offline mit Synchronisation | [`docs/NATIVE-APP.md`](../../docs/NATIVE-APP.md) |
+| `HCPCompanion` | iPhone-App „Golf HCP“: Web-App in einer WKWebView + Anbindung der Watch (Version 2.4) | dieses Dokument |
+| `HCPWatch` | watchOS-App zur Web-App: Loch, Entfernung, Ziel, GPS-Status | dieses Dokument |
+
+Gemeinsame Logik im Swift-Paket `HCPGolfKit` mit den Produkten `HCPGolfKit` (Geodäsie, PositionFilter,
+Watch-Protokoll), `GolfCore`, `GolfDemo` und `GolfPersistence` (Golf-App, siehe `docs/NATIVE-APP.md`).
+
+Die folgenden Abschnitte beschreiben die Begleit-App und die Watch-App zur Web-App.
 
 ## Warum nativ?
 
@@ -101,9 +114,9 @@ Die gemeinsamen Testwerte liegen in `tests/fixtures/gps-vectors.json` (Web-App).
 - Keine fest einprogrammierte Server-Adresse: `HCP_BASE_URL` in `Config/Base.xcconfig` oder Eingabe beim ersten
   Start (nur HTTPS).
 
-## Bauen und testen (Mac mit Xcode 15+)
+## Bauen und testen (Mac mit Xcode 16)
 
-1. Logik testen:
+1. Logik testen (auch auf Linux; die SwiftData-Tests laufen nur auf macOS):
    ```sh
    cd native/apple/HCPGolfKit && swift test
    ```
