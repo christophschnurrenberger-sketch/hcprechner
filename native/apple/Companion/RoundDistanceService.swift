@@ -28,7 +28,8 @@ final class RoundDistanceService: NSObject, ObservableObject, CLLocationManagerD
     private var locating = false
     private var timer: Timer?
     private let watch = WatchSessionManager()
-    private lazy var sync = WatchSync(send: { [weak self] message in self?.watch.send(message, snapshot: self?.sync.snapshot()) })
+    // Typ ausdrücklich angeben: Der Initialisierer verweist auf `sync` selbst (sonst „circular reference“)
+    private lazy var sync: WatchSync = WatchSync(send: { [weak self] message in self?.watch.send(message, snapshot: self?.sync.snapshot()) })
 
     override init() {
         super.init()

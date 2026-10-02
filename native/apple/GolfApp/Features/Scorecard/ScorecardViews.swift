@@ -82,7 +82,7 @@ struct ScorecardTable: View {
         .accessibilityIdentifier("scorecard.hole.\(hole.number)")
     }
 
-    private func totalRow(_ title: String, holes: [PlayedHole], value: (PlayerScorecard) -> ScoreTotals?) -> some View {
+    private func totalRow(_ title: String, holes: [PlayedHole], value: @escaping (PlayerScorecard) -> ScoreTotals?) -> some View {
         HStack(spacing: 0) {
             Text(title).font(Typography.label).lineLimit(1).minimumScaleFactor(0.6).frame(width: Width.hole + Width.par, alignment: .leading)
             Text(verbatim: holes.allSatisfy { $0.par != nil } ? String(holes.reduce(0) { $0 + ($1.par ?? 0) }) : "–")
